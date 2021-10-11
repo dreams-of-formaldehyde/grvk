@@ -49,6 +49,8 @@ typedef struct _IlcShader {
     IlcBinding* bindings;
     unsigned inputCount;
     IlcInput* inputs;
+    unsigned outputCount;
+    uint32_t* outputLocations;
     char* name;
 } IlcShader;
 

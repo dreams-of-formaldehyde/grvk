@@ -110,6 +110,8 @@ typedef struct {
     IlcBinding* bindings;
     unsigned inputCount;
     IlcInput* inputs;
+    unsigned outputCount;
+    uint32_t* outputLocations;
     IlcSpvId entryPointId;
     IlcSpvId uintId;
     IlcSpvId uint4Id;
@@ -1126,6 +1128,16 @@ static void emitLiteral(
     addRegister(compiler, &reg, "l");
 }
 
+static void emitGenericOutputInfo(
+    IlcCompiler* compiler,
+    uint32_t location)
+{
+    // emit output info
+    compiler->outputCount++;
+    compiler->outputLocations = realloc(compiler->outputLocations, compiler->outputCount * sizeof(uint32_t));
+    compiler->outputLocations[compiler->outputCount - 1] = location;
+}
+
 static void emitOutput(
     IlcCompiler* compiler,
     const Instruction* instr)
@@ -1186,6 +1198,7 @@ static void emitOutput(
         } else if (importUsage == IL_IMPORTUSAGE_GENERIC) {
             IlcSpvWord locationIdx = dst->registerNum;
             ilcSpvPutDecoration(compiler->module, outputId, SpvDecorationLocation, 1, &locationIdx);
+            emitGenericOutputInfo(compiler, locationIdx);
         } else {
             LOGW("unhandled import usage %d\n", importUsage);
         }
@@ -3895,6 +3908,8 @@ IlcShader ilcCompileKernel(
         .bindings = NULL,
         .inputCount = 0,
         .inputs = NULL,
+        .outputCount = 0,
+        .outputLocations = NULL,
         .entryPointId = ilcSpvAllocId(&module),
         .uintId = uintId,
         .uint4Id = ilcSpvPutVectorType(&module, uintId, 4),
@@ -3966,6 +3981,8 @@ IlcShader ilcCompileKernel(
         .bindings = compiler.bindings,
         .inputCount = compiler.inputCount,
         .inputs = compiler.inputs,
+        .outputCount = compiler.outputCount,
+        .outputLocations = compiler.outputLocations,
         .name = strdup(name),
     };
 }

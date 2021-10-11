@@ -580,6 +580,8 @@ GR_RESULT GR_STDCALL grCreateShader(
         .bindings = ilcShader.bindings,
         .inputCount = ilcShader.inputCount,
         .inputs = ilcShader.inputs,
+        .outputCount = ilcShader.outputCount,
+        .outputLocations = ilcShader.outputLocations,
         .name = ilcShader.name,
         .codeSize = ilcShader.codeSize,
         .code = ilcShader.code,

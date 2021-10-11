@@ -383,6 +383,8 @@ typedef struct _GrShader {
     IlcBinding* bindings;
     unsigned inputCount;
     IlcInput* inputs;
+    unsigned outputCount;
+    uint32_t* outputLocations;
     char* name;
     unsigned codeSize;
     void* code;

@@ -109,6 +109,7 @@ GR_RESULT GR_STDCALL grDestroyObject(
 
         free(grShader->bindings);
         free(grShader->inputs);
+        free(grShader->outputLocations);
         free(grShader->name);
         free(grShader->code);
     }   break;

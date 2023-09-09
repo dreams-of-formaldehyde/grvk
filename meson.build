@@ -14,6 +14,10 @@ grvk_version = vcs_tag(
   output: 'version.h',
 )
 
+if get_option('tessellation_enabled')
+    add_global_arguments('-DTESS', language : 'c')
+endif
+
 if grvk_compiler.has_link_argument('-Wl,--file-alignment=4096')
   add_global_link_arguments('-Wl,--file-alignment=4096', language: 'c')
 endif

@@ -54,6 +54,11 @@ typedef struct _IlcShader {
     char* name;
 } IlcShader;
 
+typedef struct _IlcRecompiledShader {
+    unsigned codeSize;
+    uint32_t* code;
+} IlcRecompiledShader;
+
 typedef struct _IlcBindingPatchEntry {
     uint32_t id;
     uint32_t bindingIndex;
@@ -63,6 +68,12 @@ typedef struct _IlcBindingPatchEntry {
 IlcShader ilcCompileShader(
     const void* code,
     unsigned size);
+
+IlcRecompiledShader ilcRecompileHullShader(
+    const void* code,
+    unsigned size,
+    const unsigned* inputPassthroughLocations,
+    unsigned passthroughCount);
 
 IlcShader ilcCompileRectangleGeometryShader(
     unsigned psInputCount,

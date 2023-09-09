@@ -8,6 +8,10 @@ amdilc_src = [
   'amdilc_spirv.c',
 ]
 
+if get_option('tessellation_enabled')
+    amdilc_src += 'amdilc_passthrough_compiler.c'
+endif
+
 amdilc_lib = static_library('amdilc', amdilc_src,
   dependencies        : [ logger_dep ],
   include_directories : [ grvk_include_path ],

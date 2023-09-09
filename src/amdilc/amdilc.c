@@ -135,3 +135,14 @@ void ilcDisassembleShader(
     freeKernel(kernel);
     free(kernel);
 }
+
+#ifdef TESS
+IlcRecompiledShader ilcRecompileHullShader(
+    const void* code,
+    unsigned size,
+    const unsigned* inputPassthroughLocations,
+    unsigned passthroughCount)
+{
+    return ilcRecompileHullKernel(code, size / sizeof(uint32_t), inputPassthroughLocations, passthroughCount);
+}
+#endif

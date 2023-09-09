@@ -699,21 +699,33 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
         GrShader* grShader = (GrShader*)stage->shader->shader;
 
         void* code = malloc(grShader->codeSize);
+        unsigned codeSize = grShader->codeSize;
         memcpy(code, grShader->code, grShader->codeSize);
-
-        const VkShaderModuleCreateInfo createInfo = {
-            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .codeSize = grShader->codeSize,
-            .pCode = code,//grShader->code,
-        };
 
         patchShaderBindings(
             code,
             grShader->codeSize,
             patchEntries[i],
             grShader->bindingCount);
+
+#ifdef TESS
+        if (stage->flags == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT && stages[0].shader->shader != GR_NULL_HANDLE) {
+            GrShader* grVertexShader = (GrShader*)stages[0].shader->shader;
+            IlcRecompiledShader recompiledShader = ilcRecompileHullShader(code, codeSize,
+                                                                          grVertexShader->outputLocations, grVertexShader->outputCount);
+            free(code);
+            code = recompiledShader.code;
+            codeSize = recompiledShader.codeSize;
+        }
+#endif
+
+        const VkShaderModuleCreateInfo createInfo = {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .codeSize = codeSize,
+            .pCode = code,
+        };
 
         vkRes = VKD.vkCreateShaderModule(grDevice->device, &createInfo, NULL, &shaderModules[stageCount]);
         free(code);

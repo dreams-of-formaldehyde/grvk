@@ -4192,7 +4192,7 @@ static void emitHullMainFunction(
     free(cases);
 
     // Barrier
-    IlcSpvId executionId = ilcSpvPutConstant(compiler->module, compiler->intId, SpvScopeInvocation);
+    IlcSpvId executionId = ilcSpvPutConstant(compiler->module, compiler->intId, SpvScopeWorkgroup);
     IlcSpvId memoryId = ilcSpvPutConstant(compiler->module, compiler->intId, SpvScopeInvocation);
     IlcSpvId semanticsId = ilcSpvPutConstant(compiler->module, compiler->intId,
                                              SpvMemorySemanticsMaskNone);

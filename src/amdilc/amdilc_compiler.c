@@ -1505,6 +1505,43 @@ static IlcSpvId createInvocationId(
     return invocationId;
 }
 
+static void finalizeVertexStage(
+    IlcCompiler* compiler)
+{
+    const IlcRegister* posReg = NULL;
+    for (int i = 0; i < compiler->regCount; i++) {
+        const IlcRegister* reg = &compiler->regs[i];
+
+        if (reg->ilType == IL_REGTYPE_OUTPUT && reg->ilImportUsage == IL_IMPORTUSAGE_POS) {
+            posReg = reg;
+            break;
+        }
+    }
+
+    if (posReg != NULL) {
+        IlcSpvId outputId = emitVariable(compiler, posReg->typeId, SpvStorageClassOutput);
+        IlcSpvId locationIdx = posReg->ilNum;
+        ilcSpvPutDecoration(compiler->module, outputId, SpvDecorationLocation, 1, &locationIdx);
+        ilcSpvPutDecoration(compiler->module, outputId, SpvDecorationInvariant, 0, NULL);
+        IlcSpvId loadedPosId = ilcSpvPutLoad(compiler->module, posReg->typeId, posReg->id);
+        ilcSpvPutStore(compiler->module, outputId, loadedPosId);
+        const IlcRegister reg = {
+            .id = outputId,
+            .interfaceId = outputId,
+            .typeId = posReg->typeId,
+            .componentTypeId = posReg->componentTypeId,
+            .componentCount = posReg->componentCount,
+            .ilType = IL_REGTYPE_OUTPUT,
+            .ilNum = posReg->ilNum,//idk what to place here (not needed :) )
+            .ilImportUsage = IL_IMPORTUSAGE_GENERIC,
+            .ilInterpMode = 0,
+        };
+
+        addRegister(compiler, &reg, "oPos");
+        emitGenericOutputInfo(compiler, locationIdx);
+    }
+}
+
 static void emitInput(
     IlcCompiler* compiler,
     const Instruction* instr)
@@ -4023,6 +4060,9 @@ static void emitInstr(
         emitSwitch(compiler, instr);
         break;
     case IL_OP_RET_DYN:
+        if (compiler->kernel->shaderType == IL_SHADER_VERTEX) {
+            finalizeVertexStage(compiler);
+        }
         ilcSpvPutReturn(compiler->module);
         compiler->isAfterReturn = true;
         break;

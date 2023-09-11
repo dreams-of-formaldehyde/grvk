@@ -111,6 +111,11 @@ typedef struct {
 } IlcControlFlowBlock;
 
 typedef struct {
+    IlcSpvWord invocationCount;
+    IlcSpvId functionId;
+} IlcHullPhase;
+
+typedef struct {
     const Kernel* kernel;
     IlcSpvModule* module;
     unsigned bindingCount;
@@ -141,8 +146,9 @@ typedef struct {
     unsigned controlFlowBlockCount;
     IlcControlFlowBlock* controlFlowBlocks;
     unsigned hsForkPhaseIdCount;
-    IlcSpvId* hsForkPhaseIds;
-    IlcSpvId hsJoinPhaseId;
+    IlcHullPhase* hsForkPhaseIds;
+    unsigned hsJoinPhaseIdCount;
+    IlcHullPhase* hsJoinPhaseIds;
     bool isInFunction;
     bool isAfterReturn;
 } IlcCompiler;
@@ -1474,12 +1480,12 @@ static const IlcRegister* emitDomainInputRegister(
     return addRegister(compiler, &reg, name);
 }
 
-static IlcSpvId createInvocationId(
+static const IlcRegister* createInvocationId(
     IlcCompiler* compiler)
 {
     const IlcRegister* existingInvocationIdReg = findRegister(compiler, IL_REGTYPE_OUTPUTCP, 0);
     if (existingInvocationIdReg != NULL) {
-        return existingInvocationIdReg->id;
+        return existingInvocationIdReg;
     }
     //just for the moment there is no invocationId
     IlcSpvId invocationId = emitVariable(compiler, compiler->intId, SpvStorageClassInput);
@@ -1501,8 +1507,7 @@ static IlcSpvId createInvocationId(
         .ilInterpMode = 0,
     };
 
-    addRegister(compiler, &invocationIdReg, "invocationId");
-    return invocationId;
+    return addRegister(compiler, &invocationIdReg, "invocationId");
 }
 
 static void finalizeVertexStage(
@@ -1586,9 +1591,6 @@ static void emitInput(
         inputComponentCount = 1;
         inputId = emitVariable(compiler, inputTypeId, SpvStorageClassPrivate);
 
-        IlcSpvId invocationVarId = createInvocationId(compiler);
-        IlcSpvId vInvocationId = ilcSpvPutLoad(compiler->module, compiler->intId, invocationVarId);
-        ilcSpvPutStore(compiler->module, inputId, vInvocationId);
     } else if (dst->registerType == IL_REGTYPE_INPUTCP) {
         name = "vicp";
         inputComponentTypeId = compiler->floatId;
@@ -2104,21 +2106,23 @@ static void emitHsPhase(
         emitName(compiler, hsPhaseFuncId, "hsForkPhase", compiler->hsForkPhaseIdCount);
 
         unsigned count = MAX(instr->control, 1); // Can be called with 0 instances?
-        for (unsigned i = 0; i < count; i++) {
-            compiler->hsForkPhaseIdCount++;
-            compiler->hsForkPhaseIds = realloc(compiler->hsForkPhaseIds,
-                                               compiler->hsForkPhaseIdCount * sizeof(IlcSpvId));
-            compiler->hsForkPhaseIds[compiler->hsForkPhaseIdCount - 1] = hsPhaseFuncId;
-        }
+        compiler->hsForkPhaseIdCount++;
+        compiler->hsForkPhaseIds = realloc(compiler->hsForkPhaseIds,
+                                           compiler->hsForkPhaseIdCount * sizeof(IlcHullPhase));
+        compiler->hsForkPhaseIds[compiler->hsForkPhaseIdCount - 1] = (IlcHullPhase) {
+            .invocationCount = count,
+            .functionId = hsPhaseFuncId
+        };
     } else {
-        if (compiler->hsJoinPhaseId != 0 || instr->control > 0) {
-            LOGE("unhandled multiple join phases\n");
-            assert(false);
-        }
-
-        emitName(compiler, hsPhaseFuncId, "hsJoinPhase", 0);
-
-        compiler->hsJoinPhaseId = hsPhaseFuncId;
+        emitName(compiler, hsPhaseFuncId, "hsJoinPhase", compiler->hsJoinPhaseIdCount);
+        unsigned count = MAX(instr->control, 1); // Can be called with 0 instances?
+        compiler->hsJoinPhaseIdCount++;
+        compiler->hsJoinPhaseIds = realloc(compiler->hsJoinPhaseIds,
+                                           compiler->hsJoinPhaseIdCount * sizeof(IlcHullPhase));
+        compiler->hsJoinPhaseIds[compiler->hsJoinPhaseIdCount - 1] = (IlcHullPhase) {
+            .invocationCount = count,
+            .functionId = hsPhaseFuncId
+        };
     }
 }
 
@@ -4202,56 +4206,56 @@ static void emitInstr(
 static void emitHullMainFunction(
     IlcCompiler* compiler)
 {
-    const IlcRegister* instanceIdReg = findRegister(compiler, IL_REGTYPE_SHADER_INSTANCE_ID, 0);
+    const IlcRegister* instanceIdReg = findRegister(compiler, IL_REGTYPE_OUTPUTCP, 0);
+    if (!instanceIdReg) {
+        instanceIdReg = createInvocationId(compiler);
+    }
+
+    const IlcRegister* localInstanceId = findRegister(compiler, IL_REGTYPE_SHADER_INSTANCE_ID, 0);
     IlcSpvId voidTypeId = ilcSpvPutVoidType(compiler->module);
 
     emitFunc(compiler, compiler->entryPointId);
 
     // Call the right fork phase function depending on the instance ID
     IlcSpvId instanceId = ilcSpvPutLoad(compiler->module, instanceIdReg->typeId, instanceIdReg->id);
-    IlcSpvId labelBreakId = ilcSpvAllocId(compiler->module);
-    IlcCase* cases = malloc(compiler->hsForkPhaseIdCount * sizeof(IlcCase));
-    for (unsigned i = 0; i < compiler->hsForkPhaseIdCount; i++) {
-        cases[i] = (IlcCase) {
-            .literal = i,
-            .labelId = ilcSpvAllocId(compiler->module),
-        };
-    }
-    ilcSpvPutSelectionMerge(compiler->module, labelBreakId);
-    ilcSpvPutSwitch(compiler->module, instanceId, labelBreakId,
-                    compiler->hsForkPhaseIdCount * sizeof(IlcCase) / sizeof(IlcSpvWord),
-                    (IlcSpvWord*)cases);
-
-    for (unsigned i = 0; i < compiler->hsForkPhaseIdCount; i++) {
-        ilcSpvPutLabel(compiler->module, cases[i].labelId);
-        ilcSpvPutFunctionCall(compiler->module, voidTypeId, compiler->hsForkPhaseIds[i]);
-        ilcSpvPutBranch(compiler->module, labelBreakId);
-    }
-
-    ilcSpvPutLabel(compiler->module, labelBreakId);
-    free(cases);
-
-    // Barrier
-    IlcSpvId executionId = ilcSpvPutConstant(compiler->module, compiler->intId, SpvScopeWorkgroup);
-    IlcSpvId memoryId = ilcSpvPutConstant(compiler->module, compiler->intId, SpvScopeInvocation);
-    IlcSpvId semanticsId = ilcSpvPutConstant(compiler->module, compiler->intId,
-                                             SpvMemorySemanticsMaskNone);
-    ilcSpvPutControlBarrier(compiler->module, executionId, memoryId, semanticsId);
-
     // Call join phase function on instance 0
     IlcSpvId zeroId = ilcSpvPutConstant(compiler->module, compiler->intId, ZERO_LITERAL);
     IlcSpvId condId = ilcSpvPutOp2(compiler->module, SpvOpIEqual, compiler->boolId,
                                    instanceId, zeroId);
+
     IlcSpvId labelBeginId = ilcSpvAllocId(compiler->module);
     IlcSpvId labelEndId = ilcSpvAllocId(compiler->module);
     ilcSpvPutSelectionMerge(compiler->module, labelEndId);
     ilcSpvPutBranchConditional(compiler->module, condId, labelBeginId, labelEndId);
 
     ilcSpvPutLabel(compiler->module, labelBeginId);
-    ilcSpvPutFunctionCall(compiler->module, voidTypeId, compiler->hsJoinPhaseId);
+
+    for (unsigned i = 0; i < compiler->hsForkPhaseIdCount; i++) {
+        for (unsigned j = 0; j < compiler->hsForkPhaseIds[i].invocationCount; j++) {
+            if (localInstanceId) {
+                ilcSpvPutStore(compiler->module, localInstanceId->id, ilcSpvPutConstant(compiler->module, compiler->intId, j));
+            }
+            ilcSpvPutFunctionCall(compiler->module, voidTypeId, compiler->hsForkPhaseIds[i].functionId);
+        }
+    }
+
+    for (unsigned i = 0; i < compiler->hsJoinPhaseIdCount; i++) {
+        for (unsigned j = 0; j < compiler->hsJoinPhaseIds[i].invocationCount; j++) {
+            if (localInstanceId) {
+                ilcSpvPutStore(compiler->module, localInstanceId->id, ilcSpvPutConstant(compiler->module, compiler->intId, j));
+            }
+            ilcSpvPutFunctionCall(compiler->module, voidTypeId, compiler->hsJoinPhaseIds[i].functionId);
+        }
+    }
+
     ilcSpvPutBranch(compiler->module, labelEndId);
 
     ilcSpvPutLabel(compiler->module, labelEndId);
+    // Barrier
+    IlcSpvId executionId = ilcSpvPutConstant(compiler->module, compiler->intId, SpvScopeWorkgroup);
+    IlcSpvId memoryId = ilcSpvPutConstant(compiler->module, compiler->intId, SpvScopeInvocation);
+    IlcSpvId semanticsId = ilcSpvPutConstant(compiler->module, compiler->intId,
+                                             SpvMemorySemanticsMaskNone);
     ilcSpvPutControlBarrier(compiler->module, executionId, memoryId, semanticsId);
     // here input-to-output passthrogh will be placed later on pipeline creation
     ilcSpvPutReturn(compiler->module);
@@ -4391,7 +4395,8 @@ IlcShader ilcCompileKernel(
         .controlFlowBlocks = NULL,
         .hsForkPhaseIdCount = 0,
         .hsForkPhaseIds = NULL,
-        .hsJoinPhaseId = 0,
+        .hsJoinPhaseIdCount = 0,
+        .hsJoinPhaseIds = NULL,
         .isInFunction = false,
         .isAfterReturn = false,
     };
@@ -4445,6 +4450,7 @@ IlcShader ilcCompileKernel(
     free(compiler.samplers);
     free(compiler.controlFlowBlocks);
     free(compiler.hsForkPhaseIds);
+    free(compiler.hsJoinPhaseIds);
     ilcSpvFinish(&module);
 
     return (IlcShader) {

@@ -76,10 +76,9 @@ GR_RESULT GR_STDCALL grDestroyObject(
         GrPipeline* grPipeline = (GrPipeline*)grObject;
 
         for (unsigned i = 0; i < MAX_STAGE_COUNT; i++) {
-            if (grPipeline->createInfo != NULL) {
-                free(grPipeline->createInfo->specData[i]);
-                free(grPipeline->createInfo->mapEntries[i]);
-            }
+            free(grPipeline->specData[i]);
+            free(grPipeline->mapEntries[i]);
+            free(grPipeline->shaderCode[i]);
             VKD.vkDestroyShaderModule(grDevice->device, grPipeline->shaderModules[i], NULL);
         }
 

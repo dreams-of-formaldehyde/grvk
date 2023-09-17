@@ -116,9 +116,6 @@ typedef struct _PipelineCreateInfo
     VkPipelineCreateFlags createFlags;
     unsigned stageCount;
     VkPipelineShaderStageCreateInfo stageCreateInfos[MAX_STAGE_COUNT];
-    VkSpecializationInfo specInfos[MAX_STAGE_COUNT];
-    void* specData[MAX_STAGE_COUNT];
-    VkSpecializationMapEntry* mapEntries[MAX_STAGE_COUNT];
     VkPrimitiveTopology topology;
     uint32_t patchControlPoints;
     bool depthClipEnable;
@@ -344,6 +341,8 @@ typedef struct _GrPhysicalGpu {
 typedef struct _GrPipeline {
     GrObject grObj;
     VkShaderModule shaderModules[MAX_STAGE_COUNT];
+    void* shaderCode[MAX_STAGE_COUNT];
+    unsigned shaderCodeSizes[MAX_STAGE_COUNT];
     PipelineCreateInfo* createInfo;
     bool hasTessellation;
     VkPipeline pipeline;
@@ -353,6 +352,10 @@ typedef struct _GrPipeline {
     PipelineDescriptorSlot dynamicDescriptorSlot;
     unsigned descriptorSetCounts[GR_MAX_DESCRIPTOR_SETS];
     PipelineDescriptorSlot* descriptorSlots[GR_MAX_DESCRIPTOR_SETS];
+    /* spec info */
+    VkSpecializationInfo specInfos[MAX_STAGE_COUNT];
+    void* specData[MAX_STAGE_COUNT];
+    VkSpecializationMapEntry* mapEntries[MAX_STAGE_COUNT];
 } GrPipeline;
 
 typedef struct _GrQueueSemaphore {

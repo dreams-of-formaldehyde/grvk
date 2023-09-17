@@ -609,6 +609,9 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
     VkSpecializationMapEntry* mapEntries[MAX_STAGE_COUNT] = { NULL };
     VkSpecializationInfo specInfos[MAX_STAGE_COUNT] = { { 0 } };
 
+    void* shaderCode[MAX_STAGE_COUNT] = { NULL };
+    unsigned shaderCodeSizes[MAX_STAGE_COUNT] = { 0 };
+
     PipelineDescriptorSlot dynamicDescriptorSlot = { 0 };
     unsigned descriptorSetCounts[GR_MAX_DESCRIPTOR_SETS] = { 0 };
     PipelineDescriptorSlot* pipelineDescriptorSlots[GR_MAX_DESCRIPTOR_SETS] = { NULL };
@@ -728,7 +731,9 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
         };
 
         vkRes = VKD.vkCreateShaderModule(grDevice->device, &createInfo, NULL, &shaderModules[stageCount]);
-        free(code);
+        shaderCode[stageCount] = code;
+        shaderCodeSizes[stageCount] = codeSize;
+
         if (vkRes != VK_SUCCESS) {
             res = getGrResult(vkRes);
             goto bail;
@@ -787,7 +792,9 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
 
         vkRes = VKD.vkCreateShaderModule(grDevice->device, &rectangleShaderModuleCreateInfo, NULL,
                                          &shaderModules[stageCount]);
-        free(rectangleShader.code);
+
+        shaderCode[stageCount] = rectangleShader.code;
+        shaderCodeSizes[stageCount] = rectangleShader.codeSize;
 
         if (vkRes != VK_SUCCESS) {
             res = getGrResult(vkRes);
@@ -825,9 +832,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
         (grDevice->descriptorBufferSupported ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0),
         .stageCount = stageCount,
         .stageCreateInfos = { { 0 } }, // Initialized below
-        .specInfos = { { 0 } }, // Initialized below
-        .specData = { NULL }, // Initialized below
-        .mapEntries = { NULL }, // Initialized below
         .topology = getVkPrimitiveTopology(pCreateInfo->iaState.topology),
         .patchControlPoints = pCreateInfo->tessState.patchControlPoints,
         .depthClipEnable = !!pCreateInfo->rsState.depthClipEnable,
@@ -842,17 +846,10 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
 
     memcpy(pipelineCreateInfo->stageCreateInfos, shaderStageCreateInfo,
            stageCount * sizeof(VkPipelineShaderStageCreateInfo));
-    memcpy(pipelineCreateInfo->specInfos, specInfos, sizeof(specInfos));
-    memcpy(pipelineCreateInfo->specData, specData, sizeof(specData));
-    memcpy(pipelineCreateInfo->mapEntries, mapEntries, sizeof(mapEntries));
     memcpy(pipelineCreateInfo->colorFormats, colorFormats,
            GR_MAX_COLOR_TARGETS * sizeof(VkFormat));
     memcpy(pipelineCreateInfo->colorWriteMasks, colorWriteMasks,
            GR_MAX_COLOR_TARGETS * sizeof(VkColorComponentFlags));
-
-    for (unsigned i = 0; i < MAX_STAGE_COUNT; i++) {
-        pipelineCreateInfo->stageCreateInfos[i].pSpecializationInfo = &pipelineCreateInfo->specInfos[i];
-    }
 
     descriptorSetCount = 0;
     for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
@@ -868,6 +865,8 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
     *grPipeline = (GrPipeline) {
         .grObj = { GR_OBJ_TYPE_PIPELINE, grDevice },
         .shaderModules = { VK_NULL_HANDLE },
+        .shaderCode = { NULL },  // Initialized below
+        .shaderCodeSizes = { 0 },  // Initialized below
         .createInfo = pipelineCreateInfo,
         .hasTessellation = hasTessellation,
         .pipeline = VK_NULL_HANDLE, // We don't know the attachment formats yet (Frostbite bug)
@@ -877,6 +876,9 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
         .dynamicDescriptorSlot = dynamicDescriptorSlot,
         .descriptorSetCounts = { 0 }, // Initialized below
         .descriptorSlots = { NULL }, // Initialized below
+        .specInfos = {  }, // Initialized below
+        .specData = { NULL }, // Initialized below
+        .mapEntries = { NULL }, // Initialized below
     };
 
     memcpy(grPipeline->shaderModules, shaderModules, sizeof(grPipeline->shaderModules));
@@ -886,7 +888,14 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
     memcpy(grPipeline->descriptorSlots, pipelineDescriptorSlots,
            sizeof(grPipeline->descriptorSlots));
 
+    memcpy(grPipeline->specInfos, specInfos, sizeof(specInfos));
+    memcpy(grPipeline->specData, specData, sizeof(specData));
+    memcpy(grPipeline->mapEntries, mapEntries, sizeof(mapEntries));
+    memcpy(grPipeline->shaderCode, shaderCode, sizeof(shaderCode));
+    memcpy(grPipeline->shaderCodeSizes, shaderCodeSizes, sizeof(shaderCodeSizes));
+
     for (uint32_t i = 0; i < MAX_STAGE_COUNT; i++) {
+        pipelineCreateInfo->stageCreateInfos[i].pSpecializationInfo = &grPipeline->specInfos[i];
         free(patchEntries[i]);
     }
 
@@ -901,6 +910,7 @@ bail:
         free(patchEntries[i]);
         free(specData[i]);
         free(mapEntries[i]);
+        free(shaderCode[i]);
     }
     return res;
 }
@@ -988,7 +998,7 @@ GR_RESULT GR_STDCALL grCreateComputePipeline(
         .pNext = NULL,
         .flags = 0,
         .codeSize = grShader->codeSize,
-        .pCode = code,//grShader->code,
+        .pCode = code,
     };
 
     patchShaderBindings(
@@ -998,7 +1008,7 @@ GR_RESULT GR_STDCALL grCreateComputePipeline(
         grShader->bindingCount);
 
     vkRes = VKD.vkCreateShaderModule(grDevice->device, &createInfo, NULL, &shaderModule);
-    free(code);
+
     if (vkRes != VK_SUCCESS) {
         res = getGrResult(vkRes);
         goto bail;
@@ -1048,6 +1058,8 @@ GR_RESULT GR_STDCALL grCreateComputePipeline(
     *grPipeline = (GrPipeline) {
         .grObj = { GR_OBJ_TYPE_PIPELINE, grDevice },
         .shaderModules = { shaderModule },
+        .shaderCode = { code },
+        .shaderCodeSizes = { grShader->codeSize },
         .createInfo = NULL,
         .hasTessellation = false,
         .pipeline = vkPipeline,
@@ -1063,15 +1075,17 @@ GR_RESULT GR_STDCALL grCreateComputePipeline(
            sizeof(grPipeline->descriptorSetCounts));
     memcpy(grPipeline->descriptorSlots, pipelineDescriptorSlots,
            sizeof(grPipeline->descriptorSlots));
-
-    free(specData);
-    free(mapEntries);
+    memcpy(grPipeline->specInfos, &specInfo,
+           sizeof(specInfo));
+    grPipeline->specData[0] = specData;
+    grPipeline->mapEntries[0] = mapEntries;
     free(patchEntries);
 
     *pPipeline = (GR_PIPELINE)grPipeline;
     return GR_SUCCESS;
 
 bail:
+    free(code);
     free(patchEntries);
     free(specData);
     free(mapEntries);

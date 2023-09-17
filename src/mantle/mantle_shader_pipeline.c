@@ -912,6 +912,9 @@ bail:
         free(mapEntries[i]);
         free(shaderCode[i]);
     }
+    for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+        free(pipelineDescriptorSlots[i]);
+    }
     return res;
 }
 
@@ -1089,6 +1092,9 @@ bail:
     free(patchEntries);
     free(specData);
     free(mapEntries);
+    for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+        free(pipelineDescriptorSlots[i]);
+    }
     VKD.vkDestroyPipelineLayout(grDevice->device, pipelineLayout, NULL);
     VKD.vkDestroyShaderModule(grDevice->device, shaderModule, NULL);
     return res;

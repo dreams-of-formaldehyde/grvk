@@ -531,7 +531,7 @@ VkPipeline grPipelineGetVkPipeline(
     const VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &renderingCreateInfo,
-        .flags = createInfo->createFlags,
+        .flags = grPipeline->createFlags,
         .stageCount = createInfo->stageCount,
         .pStages = createInfo->stageCreateInfos,
         .pVertexInputState = &vertexInputStateCreateInfo,
@@ -830,10 +830,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
 
     PipelineCreateInfo* pipelineCreateInfo = malloc(sizeof(PipelineCreateInfo));
     *pipelineCreateInfo = (PipelineCreateInfo) {
-        .createFlags =
-        ((pCreateInfo->flags & GR_PIPELINE_CREATE_DISABLE_OPTIMIZATION) != 0 ?
-                        VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT : 0) |
-        (grDevice->descriptorBufferSupported ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0),
         .stageCount = stageCount,
         .stageCreateInfos = { { 0 } }, // Initialized below
         .topology = getVkPrimitiveTopology(pCreateInfo->iaState.topology),
@@ -871,6 +867,10 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
         .shaderModules = { VK_NULL_HANDLE },
         .shaderCode = { NULL },  // Initialized below
         .shaderCodeSizes = { 0 },  // Initialized below
+        .createFlags =
+        ((pCreateInfo->flags & GR_PIPELINE_CREATE_DISABLE_OPTIMIZATION) != 0 ?
+                        VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT : 0) |
+        (grDevice->descriptorBufferSupported ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0),
         .createInfo = pipelineCreateInfo,
         .hasTessellation = hasTessellation,
         .pipeline = VK_NULL_HANDLE, // We don't know the attachment formats yet (Frostbite bug)
@@ -1067,6 +1067,7 @@ GR_RESULT GR_STDCALL grCreateComputePipeline(
         .shaderModules = { shaderModule },
         .shaderCode = { code },
         .shaderCodeSizes = { grShader->codeSize },
+        .createFlags = pipelineCreateInfo.flags,
         .createInfo = NULL,
         .hasTessellation = false,
         .pipeline = vkPipeline,

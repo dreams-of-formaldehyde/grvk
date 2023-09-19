@@ -113,7 +113,6 @@ typedef struct _BindPoint
 
 typedef struct _PipelineCreateInfo
 {
-    VkPipelineCreateFlags createFlags;
     unsigned stageCount;
     VkPipelineShaderStageCreateInfo stageCreateInfos[MAX_STAGE_COUNT];
     VkPrimitiveTopology topology;
@@ -343,6 +342,7 @@ typedef struct _GrPipeline {
     VkShaderModule shaderModules[MAX_STAGE_COUNT];
     void* shaderCode[MAX_STAGE_COUNT];
     unsigned shaderCodeSizes[MAX_STAGE_COUNT];
+    VkPipelineCreateFlags createFlags;
     PipelineCreateInfo* createInfo;
     bool hasTessellation;
     VkPipeline pipeline;

@@ -424,6 +424,79 @@ typedef struct _GrWsiWinDisplay {
     HMONITOR hMonitor;
 } GrWsiWinDisplay;
 
+typedef enum _GrStoredPipelineChunkType {
+    SPIRV = 1,
+    PIPELINE_INFO = 2,
+    DESCRIPTOR_SLOTS = 3,
+    GRAPHICS_PIPELINE_INFO = 4,
+    SPEC_INFO = 5,
+    SPEC_INFO_ENTRIES = 6,
+} GrStoredPipelineChunkType;
+
+typedef struct _GrBaseBlobChunk {
+    GrStoredPipelineChunkType type;
+    unsigned size;
+    uint8_t data[];
+} GrBaseBlobChunk;
+
+typedef struct _GrSpirvBlobChunk {
+    uint32_t stageIndex;
+    VkShaderStageFlags stageFlags;
+    uint32_t codeSize;
+    uint32_t code[];
+} GrSpirvBlobChunk;
+
+typedef struct _GrSpecInfoDataBlobChunk {
+    uint32_t stageIndex;
+    uint32_t dataSize;
+    uint8_t data[];
+} GrSpecInfoDataBlobChunk;
+
+typedef struct _GrSpecInfoMapEntryBlobChunk {
+    uint32_t stageIndex;
+    uint32_t mapEntryCount;
+    VkSpecializationMapEntry data[];
+} GrSpecInfoMapEntryBlobChunk;
+
+
+typedef struct _GrGraphicsPipelineInfoChunk
+{
+    VkPrimitiveTopology topology;
+    uint32_t patchControlPoints;
+    bool depthClipEnable;
+    bool alphaToCoverageEnable;
+    bool logicOpEnable;
+    VkLogicOp logicOp;
+    VkFormat colorFormats[GR_MAX_COLOR_TARGETS];
+    VkColorComponentFlags colorWriteMasks[GR_MAX_COLOR_TARGETS];
+    VkFormat depthFormat;
+    VkFormat stencilFormat;
+} GrGraphicsPipelineInfoChunk;
+
+typedef struct _GrPipelineInfoChunk
+{
+    // create flags without descriptor buffer flag enabled
+    VkPipelineCreateFlags createFlags;
+    unsigned stageCount;
+    bool dynamicMappingUsed;
+    PipelineDescriptorSlot dynamicDescriptorSlot;
+} GrPipelineInfoChunk;
+
+typedef struct _GrPipelineDescriptorChunk
+{
+    unsigned descriptorSetCounts[GR_MAX_DESCRIPTOR_SETS];
+    PipelineDescriptorSlot data[];
+} GrPipelineDescriptorChunk;
+
+/* TODO: add CRC or something to check data integrity */
+typedef struct _GrStoredPipelineBlob {
+    unsigned version;// TODO: handle build ids and checksums
+    unsigned deviceId;
+    unsigned driverId;
+    unsigned pad;
+    uint8_t data[];
+} GrStoredPipelineBlob;
+
 void grCmdBufferEndRenderPass(
     GrCmdBuffer* grCmdBuffer);
 

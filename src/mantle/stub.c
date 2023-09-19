@@ -37,18 +37,6 @@ GR_RESULT GR_STDCALL grPinSystemMemory(
     return GR_UNSUPPORTED;
 }
 
-// Shader and Pipeline Functions
-
-GR_RESULT GR_STDCALL grLoadPipeline(
-    GR_DEVICE device,
-    GR_SIZE dataSize,
-    const GR_VOID* pData,
-    GR_PIPELINE* pPipeline)
-{
-    LOGW("STUB\n");
-    return GR_UNSUPPORTED;
-}
-
 // Multi-Device Management Functions
 
 GR_RESULT GR_STDCALL grOpenSharedMemory(

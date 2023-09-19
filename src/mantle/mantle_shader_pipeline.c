@@ -1104,6 +1104,12 @@ bail:
     return res;
 }
 
+
+#define CAST_CHUNK_BASE(blob) ((GrBaseBlobChunk *)((blob)->data))
+#define CAST_CHUNK_DATA(chunk, type) ((type*)((chunk)->data))
+#define align(size, base) ((size) + (base) - 1) & ~((base)-1)
+#define GR_CHUNK_ALIGNMENT 4
+
 GR_RESULT GR_STDCALL grStorePipeline(
     GR_PIPELINE pipeline,
     GR_SIZE* pDataSize,
@@ -1111,6 +1117,505 @@ GR_RESULT GR_STDCALL grStorePipeline(
 {
     LOGT("%p %p %p\n", pipeline, pDataSize, pData);
 
-    // TODO implement
-    return GR_UNSUPPORTED;
+    if (!pDataSize) return GR_ERROR_INVALID_POINTER;
+    GrPipeline* grPipeline = (GrPipeline*)pipeline;
+
+    GR_SIZE sz = sizeof(GrStoredPipelineBlob);
+    for (unsigned i = 0; i < MAX_STAGE_COUNT; i++) {
+        if (grPipeline->shaderCode[i] != NULL) {
+            sz += align(sizeof(GrBaseBlobChunk) + sizeof(GrSpirvBlobChunk) + grPipeline->shaderCodeSizes[i], GR_CHUNK_ALIGNMENT);
+        }
+        if (grPipeline->specInfos[i].mapEntryCount > 0) {
+            sz += align(sizeof(GrBaseBlobChunk) + sizeof(GrSpecInfoMapEntryBlobChunk) + grPipeline->specInfos[i].mapEntryCount * sizeof(VkSpecializationMapEntry), GR_CHUNK_ALIGNMENT);
+        }
+        if (grPipeline->specInfos[i].dataSize > 0) {
+            sz += align(sizeof(GrBaseBlobChunk) + sizeof(GrSpecInfoDataBlobChunk) + grPipeline->specInfos[i].dataSize, GR_CHUNK_ALIGNMENT);
+        }
+    }
+
+    unsigned descriptorSetCount = 0;
+    for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+        descriptorSetCount += grPipeline->descriptorSetCounts[i];
+    }
+
+    if (descriptorSetCount > 0) {
+        sz += align(sizeof(GrBaseBlobChunk) + sizeof(GrPipelineDescriptorChunk) + descriptorSetCount * sizeof(PipelineDescriptorSlot), GR_CHUNK_ALIGNMENT);
+    }
+
+    if (grPipeline->createInfo != NULL) {
+        sz += align(sizeof(GrBaseBlobChunk) + sizeof(GrGraphicsPipelineInfoChunk), GR_CHUNK_ALIGNMENT);
+    }
+
+    sz += align(sizeof(GrBaseBlobChunk) + sizeof(GrPipelineInfoChunk), GR_CHUNK_ALIGNMENT);
+
+    LOGT("calculated %d bytes for pipeline %p\n", sz, grPipeline);
+    if (pData != NULL && *pDataSize < sz) {
+        return GR_ERROR_INVALID_MEMORY_SIZE;
+    }
+
+    if (pData != NULL) {
+        GrStoredPipelineBlob* blob = (GrStoredPipelineBlob*)pData;
+        blob->version = 0;
+
+        GrBaseBlobChunk* chunk = CAST_CHUNK_BASE(blob);
+
+        chunk->type = PIPELINE_INFO;
+        chunk->size = sizeof(GrPipelineInfoChunk);
+
+        GrPipelineInfoChunk* pipelineChunk = CAST_CHUNK_DATA(chunk, GrPipelineInfoChunk);
+        *pipelineChunk = (GrPipelineInfoChunk) {
+            .createFlags = grPipeline->createFlags & ~(VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT),
+            .stageCount = grPipeline->stageCount,
+            .dynamicMappingUsed = grPipeline->dynamicMappingUsed,
+            .dynamicDescriptorSlot = { }, // initialized below
+        };
+
+        memcpy(&pipelineChunk->dynamicDescriptorSlot, &grPipeline->dynamicDescriptorSlot, sizeof(grPipeline->dynamicDescriptorSlot));
+
+        chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+
+        if (grPipeline->createInfo != NULL) {
+            chunk->type = GRAPHICS_PIPELINE_INFO;
+            chunk->size = sizeof(GrGraphicsPipelineInfoChunk);
+
+            GrGraphicsPipelineInfoChunk* graphicsPipelineChunk = CAST_CHUNK_DATA(chunk, GrGraphicsPipelineInfoChunk);
+            *graphicsPipelineChunk = (GrGraphicsPipelineInfoChunk) {
+                .topology = grPipeline->createInfo->topology,
+                .patchControlPoints = grPipeline->createInfo->patchControlPoints,
+                .depthClipEnable = grPipeline->createInfo->depthClipEnable,
+                .alphaToCoverageEnable = grPipeline->createInfo->alphaToCoverageEnable,
+                .logicOpEnable = grPipeline->createInfo->logicOpEnable,
+                .logicOp = grPipeline->createInfo->logicOp,
+                .colorFormats = { }, // written below
+                .colorWriteMasks = { }, // written below
+                .depthFormat = grPipeline->createInfo->depthFormat,
+                .stencilFormat = grPipeline->createInfo->stencilFormat,
+            };
+
+            memcpy(graphicsPipelineChunk->colorFormats, grPipeline->createInfo->colorFormats, sizeof(grPipeline->createInfo->colorFormats));
+            memcpy(graphicsPipelineChunk->colorWriteMasks, grPipeline->createInfo->colorWriteMasks, sizeof(grPipeline->createInfo->colorWriteMasks));
+
+            chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+            LOGT("gp info offset is %p %d\n", (uint8_t*)chunk - (uint8_t*)pData, sz);
+        }
+
+        if (descriptorSetCount > 0) {
+            chunk->type = DESCRIPTOR_SLOTS;
+            chunk->size = sizeof(GrPipelineDescriptorChunk) + descriptorSetCount * sizeof(PipelineDescriptorSlot);
+
+            GrPipelineDescriptorChunk* descriptorChunk = CAST_CHUNK_DATA(chunk, GrPipelineDescriptorChunk);
+            memcpy(descriptorChunk->descriptorSetCounts, grPipeline->descriptorSetCounts, sizeof(grPipeline->descriptorSetCounts));
+            unsigned descriptorIndex = 0;
+            for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+                memcpy(&descriptorChunk->data[descriptorIndex], grPipeline->descriptorSlots[i],
+                       sizeof(PipelineDescriptorSlot) * grPipeline->descriptorSetCounts[i]);
+                descriptorIndex += grPipeline->descriptorSetCounts[i];
+            }
+
+            chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+            LOGT("descriptor offset is %p %d\n", (uint8_t*)chunk - (uint8_t*)pData, sz);
+        }
+
+        for (unsigned i = 0; i < MAX_STAGE_COUNT; i++) {
+            if (grPipeline->shaderCode[i] != NULL) {
+                chunk->type = SPIRV;
+                chunk->size = sizeof(GrSpirvBlobChunk) + grPipeline->shaderCodeSizes[i];
+
+                GrSpirvBlobChunk* shaderChunk = CAST_CHUNK_DATA(chunk, GrSpirvBlobChunk);
+                shaderChunk->stageIndex = i;
+                shaderChunk->stageFlags = grPipeline->createInfo == NULL ? VK_SHADER_STAGE_COMPUTE_BIT : grPipeline->createInfo->stageCreateInfos[i].stage;
+                shaderChunk->codeSize = grPipeline->shaderCodeSizes[i];
+                memcpy(shaderChunk->code, grPipeline->shaderCode[i], grPipeline->shaderCodeSizes[i]);
+
+                chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+                LOGT("spirv offset is %p %d\n", (uint8_t*)chunk - (uint8_t*)pData, sz);
+            }
+            if (grPipeline->specInfos[i].dataSize > 0) {
+                chunk->type = SPEC_INFO;
+                chunk->size = sizeof(GrSpecInfoDataBlobChunk) + grPipeline->specInfos[i].dataSize;
+
+                GrSpecInfoDataBlobChunk* dataChunk = CAST_CHUNK_DATA(chunk, GrSpecInfoDataBlobChunk);
+                dataChunk->stageIndex = i;
+                dataChunk->dataSize = grPipeline->specInfos[i].dataSize;
+                memcpy(&dataChunk->data, grPipeline->specData[i], grPipeline->specInfos[i].dataSize);
+
+                chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+                LOGT("specinfo offset is %p %d\n", (uint8_t*)chunk - (uint8_t*)pData, sz);
+            }
+            if (grPipeline->specInfos[i].mapEntryCount > 0) {
+                LOGT("storing spec map %d %d\n", i, grPipeline->specInfos[i].mapEntryCount);
+                chunk->type = SPEC_INFO_ENTRIES;
+                chunk->size = sizeof(GrSpecInfoMapEntryBlobChunk) + grPipeline->specInfos[i].mapEntryCount * sizeof(VkSpecializationMapEntry);
+
+                GrSpecInfoMapEntryBlobChunk* entryChunk = CAST_CHUNK_DATA(chunk, GrSpecInfoMapEntryBlobChunk);
+                entryChunk->stageIndex = i;
+                entryChunk->mapEntryCount = grPipeline->specInfos[i].mapEntryCount;
+                memcpy(&entryChunk->data, grPipeline->mapEntries[i], grPipeline->specInfos[i].mapEntryCount * sizeof(VkSpecializationMapEntry));
+
+                chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+                LOGT("spec map offset is %p %d %d\n", (uint8_t*)chunk - (uint8_t*)pData, sz, i);
+            }
+        }
+        LOGT("offset is %p %d\n", (uint8_t*)chunk - (uint8_t*)pData, sz);
+    } else {
+        *pDataSize = sz;
+    }
+
+    return GR_SUCCESS;
+}
+
+// Shader and Pipeline Functions
+
+GR_RESULT GR_STDCALL grLoadPipeline(
+    GR_DEVICE device,
+    GR_SIZE dataSize,
+    const GR_VOID* pData,
+    GR_PIPELINE* pPipeline)
+{
+    LOGT("%p %d %p %p\n", device, dataSize, pData, pPipeline);
+    GrDevice* grDevice = (GrDevice*)device;
+    // validate it first
+    if (dataSize <= (sizeof(GrStoredPipelineBlob) + sizeof(GrBaseBlobChunk))) {
+        return GR_ERROR_INVALID_MEMORY_SIZE;
+    }
+    if (pData == NULL) {
+        return GR_ERROR_INVALID_POINTER;
+    }
+
+    GrStoredPipelineBlob* blob = (GrStoredPipelineBlob*)pData;
+    /* TODO: validate chunks */
+    GR_SIZE sz = sizeof(GrStoredPipelineBlob);
+    GrBaseBlobChunk* chunk = CAST_CHUNK_BASE(blob);
+
+    GR_RESULT res = GR_ERROR_BAD_PIPELINE_DATA;
+    /* chunk size validation */
+    while (sz < dataSize) {
+        if ((sz + chunk->size + sizeof(GrBaseBlobChunk)) > dataSize) {
+            return GR_ERROR_INVALID_MEMORY_SIZE;
+        }
+        switch (chunk->type) {
+        case SPIRV: {
+            GrSpirvBlobChunk* shaderChunk = CAST_CHUNK_DATA(chunk, GrSpirvBlobChunk);
+            if ((shaderChunk->codeSize + sizeof(GrSpirvBlobChunk)) > chunk->size) {
+                LOGE("incorrect shader size\n");
+                return GR_ERROR_INVALID_MEMORY_SIZE;
+            }
+            break;
+        }
+        case SPEC_INFO: {
+            GrSpecInfoDataBlobChunk* dataChunk = CAST_CHUNK_DATA(chunk, GrSpecInfoDataBlobChunk);
+            if ((dataChunk->dataSize + sizeof(GrSpecInfoDataBlobChunk)) > chunk->size) {
+                LOGE("incorrect spec info size\n");
+                return GR_ERROR_INVALID_MEMORY_SIZE;
+            }
+            break;
+        }
+        case SPEC_INFO_ENTRIES: {
+            GrSpecInfoMapEntryBlobChunk* dataChunk = CAST_CHUNK_DATA(chunk, GrSpecInfoMapEntryBlobChunk);
+            if ((sizeof(GrSpecInfoMapEntryBlobChunk) + dataChunk->mapEntryCount * sizeof(VkSpecializationMapEntry)) > chunk->size) {
+                LOGE("incorrect spec map entries size\n");
+                return GR_ERROR_INVALID_MEMORY_SIZE;
+            }
+            break;
+        }
+        case DESCRIPTOR_SLOTS: {
+            const GrPipelineDescriptorChunk* dataChunk = CAST_CHUNK_DATA(chunk, GrPipelineDescriptorChunk);
+            unsigned descriptorSetCount = 0;
+            for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+                descriptorSetCount += dataChunk->descriptorSetCounts[i];
+            }
+            if ((sizeof(GrPipelineDescriptorChunk) + descriptorSetCount * sizeof(PipelineDescriptorSlot)) > chunk->size) {
+                LOGE("incorrect descriptor sets size\n");
+                return GR_ERROR_INVALID_MEMORY_SIZE;
+            }
+            break;
+        }
+        case GRAPHICS_PIPELINE_INFO: {
+            if (chunk->size != sizeof(GrGraphicsPipelineInfoChunk)) {
+                LOGE("incorrect graphics pipeline info size\n");
+                return GR_ERROR_INVALID_MEMORY_SIZE;
+            }
+            break;
+        }
+        case PIPELINE_INFO: {
+            if (chunk->size != sizeof(GrPipelineInfoChunk)) {
+                LOGE("incorrect pipeline info size\n");
+                return GR_ERROR_INVALID_MEMORY_SIZE;
+            }
+            break;
+        }
+        }
+        sz += align(sizeof(GrBaseBlobChunk) + chunk->size, GR_CHUNK_ALIGNMENT);
+        chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+    }
+
+    LOGT("size is correct\n");
+    /* shader code */
+    VkShaderModule shaderModules[MAX_STAGE_COUNT] = { VK_NULL_HANDLE };
+    void* shaderCode[MAX_STAGE_COUNT] = { NULL };
+    unsigned shaderCodeSizes[MAX_STAGE_COUNT] = { 0 };
+    VkShaderStageFlags stageFlags[MAX_STAGE_COUNT] = { 0 };
+    /* descriptor slots */
+    unsigned descriptorSetCounts[GR_MAX_DESCRIPTOR_SETS] = { 0, 0 };
+    PipelineDescriptorSlot* descriptorSlots[GR_MAX_DESCRIPTOR_SETS] = { NULL };
+    /* spec info */
+    VkSpecializationInfo specInfos[MAX_STAGE_COUNT] = {};
+    void* specData[MAX_STAGE_COUNT] = { NULL };
+    VkSpecializationMapEntry* mapEntries[MAX_STAGE_COUNT] = { NULL };
+    /*  */
+    PipelineCreateInfo* createInfo = NULL;
+    unsigned stageCount = 0;
+    bool dynamicMappingUsed = FALSE;
+    PipelineDescriptorSlot dynamicDescriptorSlot = {};
+    VkPipelineCreateFlags pipelineCreateFlags = 0;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkPipeline vkPipeline = VK_NULL_HANDLE;
+    GrPipeline* grPipeline = NULL;
+
+    chunk = CAST_CHUNK_BASE(blob);
+    sz = sizeof(GrStoredPipelineBlob);
+    while (sz < dataSize) {
+        switch (chunk->type) {
+        case SPIRV: {
+            GrSpirvBlobChunk* shaderChunk = CAST_CHUNK_DATA(chunk, GrSpirvBlobChunk);
+            if (shaderChunk->stageIndex >= MAX_STAGE_COUNT || stageFlags[shaderChunk->stageIndex] != 0) {
+                goto bail;
+            }
+            stageFlags[shaderChunk->stageIndex] = shaderChunk->stageFlags;
+            shaderCode[shaderChunk->stageIndex] = malloc(shaderChunk->codeSize);
+            shaderCodeSizes[shaderChunk->stageIndex] = shaderChunk->codeSize;
+            memcpy(shaderCode[shaderChunk->stageIndex], &shaderChunk->code, shaderCodeSizes[shaderChunk->stageIndex]);
+            break;
+        }
+        case SPEC_INFO: {
+            GrSpecInfoDataBlobChunk* dataChunk = CAST_CHUNK_DATA(chunk, GrSpecInfoDataBlobChunk);
+            // TODO: move to validation
+            if (dataChunk->stageIndex >= MAX_STAGE_COUNT) {
+                goto bail;
+            }
+            unsigned index = dataChunk->stageIndex;
+            specData[index] = malloc(dataChunk->dataSize);
+            memcpy(specData[index], &dataChunk->data, dataChunk->dataSize);
+            specInfos[index].dataSize = dataChunk->dataSize;
+            specInfos[index].pData = specData[index];
+            break;
+        }
+        case SPEC_INFO_ENTRIES: {
+            GrSpecInfoMapEntryBlobChunk* dataChunk = CAST_CHUNK_DATA(chunk, GrSpecInfoMapEntryBlobChunk);
+            if (dataChunk->stageIndex >= MAX_STAGE_COUNT) {
+                goto bail;
+            }
+            unsigned index = dataChunk->stageIndex;
+            mapEntries[index] = malloc(dataChunk->mapEntryCount * sizeof(VkSpecializationMapEntry));
+            memcpy(mapEntries[index], &dataChunk->data, dataChunk->mapEntryCount * sizeof(VkSpecializationMapEntry));
+            specInfos[index].mapEntryCount = dataChunk->mapEntryCount;
+            specInfos[index].pMapEntries = mapEntries[index];
+            break;
+        }
+        case DESCRIPTOR_SLOTS: {
+            const GrPipelineDescriptorChunk* dataChunk = CAST_CHUNK_DATA(chunk, GrPipelineDescriptorChunk);
+            unsigned descriptorSetIndex = 0;
+            for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+                if (dataChunk->descriptorSetCounts[i] > 0) {
+                    descriptorSlots[i] = malloc(dataChunk->descriptorSetCounts[i] * sizeof(PipelineDescriptorSlot));
+                    descriptorSetCounts[i] = dataChunk->descriptorSetCounts[i];
+                    memcpy(descriptorSlots[i], &dataChunk->data[descriptorSetIndex], dataChunk->descriptorSetCounts[i] * sizeof(PipelineDescriptorSlot));
+                }
+                descriptorSetIndex += dataChunk->descriptorSetCounts[i];
+            }
+            break;
+        }
+        case GRAPHICS_PIPELINE_INFO: {
+            if (createInfo != NULL) {
+                goto bail;
+            }
+            createInfo = malloc(sizeof(PipelineCreateInfo));
+            GrGraphicsPipelineInfoChunk* graphicsPipelineChunk = CAST_CHUNK_DATA(chunk, GrGraphicsPipelineInfoChunk);
+            *createInfo = (PipelineCreateInfo) {
+                .stageCreateInfos = { { 0 } }, // Initialized later
+                .topology = graphicsPipelineChunk->topology,
+                .patchControlPoints = graphicsPipelineChunk->patchControlPoints,
+                .depthClipEnable = graphicsPipelineChunk->depthClipEnable,
+                .alphaToCoverageEnable = graphicsPipelineChunk->alphaToCoverageEnable,
+                .logicOpEnable = graphicsPipelineChunk->logicOpEnable,
+                .logicOp = graphicsPipelineChunk->logicOp,
+                .colorFormats = { 0 }, // written below
+                .colorWriteMasks = { 0 }, // written below
+                .depthFormat = graphicsPipelineChunk->depthFormat,
+                .stencilFormat = graphicsPipelineChunk->stencilFormat,
+            };
+
+            memcpy(createInfo->colorFormats, graphicsPipelineChunk->colorFormats, sizeof(createInfo->colorFormats));
+            memcpy(createInfo->colorWriteMasks, graphicsPipelineChunk->colorWriteMasks, sizeof(createInfo->colorWriteMasks));
+
+            break;
+        }
+        case PIPELINE_INFO: {
+            GrPipelineInfoChunk* pipelineInfoChunk = CAST_CHUNK_DATA(chunk, GrPipelineInfoChunk);
+            stageCount = pipelineInfoChunk->stageCount;
+            dynamicMappingUsed = pipelineInfoChunk->dynamicMappingUsed;
+            pipelineCreateFlags = pipelineInfoChunk->createFlags;
+            memcpy(&dynamicDescriptorSlot, &pipelineInfoChunk->dynamicDescriptorSlot, sizeof(dynamicDescriptorSlot));
+            break;
+        }
+        }
+        sz += align(sizeof(GrBaseBlobChunk) + chunk->size, GR_CHUNK_ALIGNMENT);
+        chunk = (GrBaseBlobChunk*)&chunk->data[align(chunk->size, GR_CHUNK_ALIGNMENT)];
+    }
+
+    LOGT("chunks loaded\n");
+
+    if (createInfo != NULL) {
+        for (int i = 0; i < stageCount; i++) {
+            if (shaderCode[i] == NULL || stageFlags[i] == 0) {
+                goto bail;
+            }
+            if ((specInfos[i].mapEntryCount > 0) ^ (specInfos[i].dataSize > 0)) {
+                goto bail;
+            }
+        }
+    } else if (stageCount != 1 || stageFlags[0] != VK_SHADER_STAGE_COMPUTE_BIT) {
+        goto bail;
+    }
+
+    VkPipelineShaderStageCreateInfo computeStageInfo;
+    bool hasTessellation = false;
+
+    for (int i = 0; i < stageCount; i++) {
+        /* TODO: validate spec infos */
+        if (shaderCode[i] == NULL || stageFlags[i] == 0) {
+            goto bail;
+        }
+
+        const VkShaderModuleCreateInfo shaderCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .codeSize = shaderCodeSizes[i],
+            .pCode = shaderCode[i],
+        };
+        VkResult vkRes = VKD.vkCreateShaderModule(grDevice->device, &shaderCreateInfo, NULL, &shaderModules[i]);
+
+        if (vkRes != VK_SUCCESS) {
+            res = GR_ERROR_BAD_PIPELINE_DATA;
+            goto bail;
+        }
+        if (createInfo != NULL) {
+            createInfo->stageCreateInfos[i] = (VkPipelineShaderStageCreateInfo) {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .stage = stageFlags[i],
+                .module = shaderModules[i],
+                .pName = "main",
+                .pSpecializationInfo = &specInfos[i],
+            };
+            if (stageFlags[i] == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT ||
+                stageFlags[i] == VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
+                hasTessellation = true;
+            }
+        } else {
+            computeStageInfo = (VkPipelineShaderStageCreateInfo) {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .stage = stageFlags[i],
+                .module = shaderModules[i],
+                .pName = "main",
+                .pSpecializationInfo = &specInfos[i],
+            };
+        }
+    }
+    unsigned descriptorSetCount = 0;
+    for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+        descriptorSetCount += descriptorSetCounts[i];
+    }
+
+    pipelineLayout = getVkPipelineLayout(grDevice, descriptorSetCount, VK_PIPELINE_BIND_POINT_COMPUTE);
+    if (pipelineLayout == VK_NULL_HANDLE) {
+        res = GR_ERROR_OUT_OF_MEMORY;
+        goto bail;
+    }
+
+    if (createInfo == NULL) {
+        const VkComputePipelineCreateInfo pipelineCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = pipelineCreateFlags |
+            (grDevice->descriptorBufferSupported ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0),
+            .stage = computeStageInfo,
+            .layout = pipelineLayout,
+            .basePipelineHandle = VK_NULL_HANDLE,
+            .basePipelineIndex = 0,
+        };
+
+        VkResult vkRes = VKD.vkCreateComputePipelines(grDevice->device, VK_NULL_HANDLE, 1, &pipelineCreateInfo,
+                                             NULL, &vkPipeline);
+        if (vkRes != VK_SUCCESS) {
+            LOGE("vkCreateComputePipelines failed (%d)\n", vkRes);
+            res = GR_ERROR_BAD_PIPELINE_DATA;
+            goto bail;
+        }
+    }
+    grPipeline = malloc(sizeof(GrPipeline));
+    *grPipeline = (GrPipeline) {
+        .grObj = { GR_OBJ_TYPE_PIPELINE, grDevice },
+        .shaderModules = { VK_NULL_HANDLE },
+        .shaderCode = { NULL },
+        .shaderCodeSizes = { 0 },
+        .createFlags = pipelineCreateFlags,
+        .createInfo = createInfo,
+        .hasTessellation = hasTessellation,
+        .pipeline = vkPipeline,
+        .pipelineLayout = pipelineLayout,
+        .stageCount = stageCount,
+        .dynamicMappingUsed = dynamicMappingUsed,
+        .dynamicDescriptorSlot = dynamicDescriptorSlot,
+        .descriptorSetCounts = { 0 }, // Initialized below
+        .descriptorSlots = { NULL }, // Initialized below
+    };
+
+    memcpy(grPipeline->shaderModules, shaderModules,
+           sizeof(shaderModules));
+    memcpy(grPipeline->shaderCodeSizes, shaderCodeSizes,
+           sizeof(shaderCodeSizes));
+    memcpy(grPipeline->shaderCode, shaderCode,
+           sizeof(shaderCode));
+    memcpy(grPipeline->descriptorSetCounts, descriptorSetCounts,
+           sizeof(grPipeline->descriptorSetCounts));
+    memcpy(grPipeline->descriptorSlots, descriptorSlots,
+           sizeof(grPipeline->descriptorSlots));
+    memcpy(grPipeline->specInfos, specInfos,
+           sizeof(grPipeline->specInfos));
+    memcpy(grPipeline->mapEntries, mapEntries,
+           sizeof(grPipeline->mapEntries));
+    memcpy(grPipeline->specData, specData,
+           sizeof(grPipeline->specData));
+    if (createInfo != NULL) {
+        for (uint32_t i = 0; i < MAX_STAGE_COUNT; i++) {
+            createInfo->stageCreateInfos[i].pSpecializationInfo = &grPipeline->specInfos[i];
+        }
+    }
+
+    *pPipeline = (GR_PIPELINE)grPipeline;
+    LOGT("loaded pipeline %p\n", grPipeline);
+
+    return GR_SUCCESS;
+bail:
+    LOGE("failed to load pipeline %d\n", res);
+    for (unsigned i = 0; i < MAX_STAGE_COUNT; i++) {
+        VKD.vkDestroyShaderModule(grDevice->device, shaderModules[i], NULL);
+        free(shaderCode[i]);
+        free(specData[i]);
+        free(mapEntries[i]);
+    }
+
+    VKD.vkDestroyPipeline(grDevice->device, vkPipeline, NULL);
+    VKD.vkDestroyPipelineLayout(grDevice->device, pipelineLayout, NULL);
+
+    for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
+        free(descriptorSlots[i]);
+    }
+    free(createInfo);
+    return res;
 }

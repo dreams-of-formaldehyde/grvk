@@ -113,7 +113,6 @@ typedef struct _BindPoint
 
 typedef struct _PipelineCreateInfo
 {
-    unsigned stageCount;
     VkPipelineShaderStageCreateInfo stageCreateInfos[MAX_STAGE_COUNT];
     VkPrimitiveTopology topology;
     uint32_t patchControlPoints;

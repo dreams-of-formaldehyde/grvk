@@ -532,7 +532,7 @@ VkPipeline grPipelineGetVkPipeline(
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &renderingCreateInfo,
         .flags = grPipeline->createFlags,
-        .stageCount = createInfo->stageCount,
+        .stageCount = grPipeline->stageCount,
         .pStages = createInfo->stageCreateInfos,
         .pVertexInputState = &vertexInputStateCreateInfo,
         .pInputAssemblyState = &inputAssemblyStateCreateInfo,
@@ -830,7 +830,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
 
     PipelineCreateInfo* pipelineCreateInfo = malloc(sizeof(PipelineCreateInfo));
     *pipelineCreateInfo = (PipelineCreateInfo) {
-        .stageCount = stageCount,
         .stageCreateInfos = { { 0 } }, // Initialized below
         .topology = getVkPrimitiveTopology(pCreateInfo->iaState.topology),
         .patchControlPoints = pCreateInfo->tessState.patchControlPoints,
@@ -875,7 +874,7 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
         .hasTessellation = hasTessellation,
         .pipeline = VK_NULL_HANDLE, // We don't know the attachment formats yet (Frostbite bug)
         .pipelineLayout = pipelineLayout,
-        .stageCount = COUNT_OF(stages),
+        .stageCount = stageCount,
         .dynamicMappingUsed = dynamicMappingUsed,
         .dynamicDescriptorSlot = dynamicDescriptorSlot,
         .descriptorSetCounts = { 0 }, // Initialized below

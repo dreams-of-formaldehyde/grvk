@@ -646,6 +646,9 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
 
         GrShader* grShader = (GrShader*)stage->shader->shader;
 
+        if (grShader->bindingCount == 0) {
+            continue;
+        }
         patchEntries[i] = malloc(sizeof(IlcBindingPatchEntry) * grShader->bindingCount);
         mapEntries[i] = malloc(grShader->bindingCount * 2 * sizeof(VkSpecializationMapEntry));
         specData[i] = malloc(sizeof(uint32_t) * 2 * grShader->bindingCount);
@@ -748,6 +751,7 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
             mapEntries[i] = NULL;
             specData[i] = NULL;
             memcpy(&specInfos[stageCount], &specInfos[i], sizeof(VkSpecializationInfo));
+            memset(&specInfos[i], 0, sizeof(VkSpecializationInfo));
         }
 
         shaderStageCreateInfo[stageCount] = (VkPipelineShaderStageCreateInfo) {

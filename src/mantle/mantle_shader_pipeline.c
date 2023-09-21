@@ -1115,6 +1115,7 @@ GR_RESULT GR_STDCALL grStorePipeline(
     GR_SIZE* pDataSize,
     GR_VOID* pData)
 {
+#ifdef PIPELINE_CACHE
     LOGT("%p %p %p\n", pipeline, pDataSize, pData);
 
     if (!pDataSize) return GR_ERROR_INVALID_POINTER;
@@ -1262,6 +1263,10 @@ GR_RESULT GR_STDCALL grStorePipeline(
     }
 
     return GR_SUCCESS;
+#else
+    LOGW("stub\n");
+    return GR_UNSUPPORTED;
+#endif
 }
 
 // Shader and Pipeline Functions
@@ -1272,6 +1277,7 @@ GR_RESULT GR_STDCALL grLoadPipeline(
     const GR_VOID* pData,
     GR_PIPELINE* pPipeline)
 {
+#ifdef PIPELINE_CACHE
     LOGT("%p %d %p %p\n", device, dataSize, pData, pPipeline);
     GrDevice* grDevice = (GrDevice*)device;
     // validate it first
@@ -1618,4 +1624,8 @@ bail:
     }
     free(createInfo);
     return res;
+#else
+    LOGW("stub\n");
+    return GR_UNSUPPORTED;
+#endif
 }

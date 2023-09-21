@@ -1,1 +1,2 @@
 option('tessellation_enabled', type : 'boolean', value : false)
+option('pipeline_storage', type : 'boolean', value : false)

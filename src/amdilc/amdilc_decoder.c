@@ -56,6 +56,7 @@ static const OpcodeInfo mOpcodeInfos[IL_OP_LAST] = {
     [IL_OP_DISCARD_LOGICALZ] = { IL_OP_DISCARD_LOGICALZ, 0, 1, 0 },
     [IL_OP_DISCARD_LOGICALNZ] = { IL_OP_DISCARD_LOGICALNZ, 0, 1, 0 },
     [IL_OP_LOAD] = { IL_OP_LOAD, 1, 1, 0 },
+    [IL_OP_LOAD_FPTR] = { IL_OP_LOAD_FPTR, 1, 1, 0 },
     [IL_OP_RESINFO] = { IL_OP_RESINFO, 1, 1, 0 },
     [IL_OP_SAMPLE] = { IL_OP_SAMPLE, 1, 1, 0 },
     [IL_OP_SAMPLE_B] = { IL_OP_SAMPLE_B, 1, 2, 0 },

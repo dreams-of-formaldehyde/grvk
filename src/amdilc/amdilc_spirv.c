@@ -880,6 +880,21 @@ IlcSpvId ilcSpvPutImageQueryLevels(
     return id;
 }
 
+IlcSpvId ilcSpvPutImageQuerySamples(
+    IlcSpvModule* module,
+    IlcSpvId resultTypeId,
+    IlcSpvId imageId)
+{
+    IlcSpvBuffer* buffer = &module->buffer[ID_CODE];
+
+    IlcSpvId id = ilcSpvAllocId(module);
+    putInstr(buffer, SpvOpImageQuerySamples, 4);
+    putWord(buffer, resultTypeId);
+    putWord(buffer, id);
+    putWord(buffer, imageId);
+    return id;
+}
+
 IlcSpvId ilcSpvPutOp1(
     IlcSpvModule* module,
     SpvOp op,

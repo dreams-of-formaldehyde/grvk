@@ -300,6 +300,11 @@ IlcSpvId ilcSpvPutImageQueryLevels(
     IlcSpvId resultTypeId,
     IlcSpvId imageId);
 
+IlcSpvId ilcSpvPutImageQuerySamples(
+    IlcSpvModule* module,
+    IlcSpvId resultTypeId,
+    IlcSpvId imageId);
+
 IlcSpvId ilcSpvPutOp1(
     IlcSpvModule* module,
     SpvOp op,

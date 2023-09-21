@@ -1805,6 +1805,18 @@ static void emitResource(
         sampledTypeId = compiler->uintId;
         texelTypeId = compiler->uint4Id;
         spvImageFormat = SpvImageFormatRgba32ui;
+    } else if (fmtx == IL_ELEMENTFORMAT_SINT && fmty == IL_ELEMENTFORMAT_SINT &&
+               fmtz == 0 && fmtw == 0) {
+        sampledTypeId = compiler->intId;
+        texelTypeId = compiler->int4Id;
+        spvImageFormat = SpvImageFormatRg32i;
+        ilcSpvPutCapability(compiler->module, SpvCapabilityStorageImageExtendedFormats);
+    } else if (fmtx == IL_ELEMENTFORMAT_UINT && fmty == IL_ELEMENTFORMAT_UINT &&
+               fmtz == 0 && fmtw == 0) {
+        sampledTypeId = compiler->uintId;
+        texelTypeId = compiler->uint4Id;
+        spvImageFormat = SpvImageFormatRg32ui;
+        ilcSpvPutCapability(compiler->module, SpvCapabilityStorageImageExtendedFormats);
     } else {
         LOGE("unhandled resource format %d %d %d %d\n", fmtx, fmty, fmtz, fmtw);
         assert(false);
@@ -3095,6 +3107,60 @@ static void emitLoad(
     storeDestination(compiler, dst, fetchId, resource->texelTypeId);
 }
 
+static void emitLoadFptr(
+    IlcCompiler* compiler,
+    const Instruction* instr)
+{
+    uint8_t ilResourceId = GET_BITS(instr->control, 0, 7);
+
+    const IlcResource* resource = findResource(compiler, RES_TYPE_GENERIC, ilResourceId);
+    const Destination* dst = &compiler->kernel->dstBuffer[instr->dsts[0]];
+
+    if (resource == NULL) {
+        LOGE("resource %d not found\n", ilResourceId);
+        return;
+    }
+
+    // TODO: use OpFragmentMaskFetchAMD if it's available
+    // needs this coordinate as well
+    /* IlcSpvId srcId = loadSource(compiler, &compiler->kernel->srcBuffer[instr->srcs[0]], COMP_MASK_XYZW, compiler->int4Id);*/
+
+    IlcSpvId resourceId = ilcSpvPutLoad(compiler->module, resource->typeId, emitResourceLoad(compiler, resource, SpvStorageClassUniformConstant));
+
+    IlcSpvId zeroId = ilcSpvPutConstant(compiler->module, compiler->uintId, ZERO_LITERAL);
+    IlcSpvId eightId = ilcSpvPutConstant(compiler->module, compiler->uintId, 8u);
+    IlcSpvId oneId = ilcSpvPutConstant(compiler->module, compiler->uintId, 1u);
+    IlcSpvId fourId = ilcSpvPutConstant(compiler->module, compiler->uintId, 4u);
+
+    ilcSpvPutCapability(compiler->module, SpvCapabilityImageQuery);
+    IlcSpvId sampleCountId = ilcSpvPutImageQuerySamples(compiler->module, compiler->uintId, resourceId);
+    IlcSpvId xConstId = ilcSpvPutConstant(compiler->module, compiler->uintId, 0x76543210u);
+    IlcSpvId yConstId = ilcSpvPutConstant(compiler->module, compiler->uintId, 0xfedcba98u);
+
+    IlcSpvId condId = ilcSpvPutOp2(compiler->module, SpvOpUGreaterThanEqual, compiler->boolId,
+                                   sampleCountId, eightId);
+
+    IlcSpvId xId = ilcSpvPutOp2(compiler->module, SpvOpIMul, compiler->uintId, sampleCountId, fourId);
+    xId = ilcSpvPutOp2(compiler->module, SpvOpShiftLeftLogical, compiler->uintId, oneId, xId);
+    xId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, xId, oneId);
+    xId = ilcSpvPutOp2(compiler->module, SpvOpBitwiseAnd, compiler->uintId, xId, xConstId);
+
+    xId = ilcSpvPutSelect(compiler->module, compiler->uintId, condId, xConstId, xId);
+
+    IlcSpvId yId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, sampleCountId, eightId);
+    yId = ilcSpvPutOp2(compiler->module, SpvOpIMul, compiler->uintId, yId, fourId);
+    yId = ilcSpvPutOp2(compiler->module, SpvOpShiftLeftLogical, compiler->uintId, oneId, yId);
+    yId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, yId, oneId);
+    yId = ilcSpvPutOp2(compiler->module, SpvOpBitwiseAnd, compiler->uintId, yId, yConstId);
+
+    yId = ilcSpvPutSelect(compiler->module, compiler->uintId, condId, yId, zeroId);
+    const IlcSpvWord constituents[] = { xId, yId, zeroId, zeroId };
+    IlcSpvId paletteId = ilcSpvPutCompositeConstruct(compiler->module, compiler->uint4Id,
+                                                        4, constituents);
+
+    storeDestination(compiler, dst, paletteId, compiler->uint4Id);
+}
+
 static void emitResinfo(
     IlcCompiler* compiler,
     const Instruction* instr)
@@ -4094,6 +4160,9 @@ static void emitInstr(
         break;
     case IL_OP_LOAD:
         emitLoad(compiler, instr);
+        break;
+    case IL_OP_LOAD_FPTR:
+        emitLoadFptr(compiler, instr);
         break;
     case IL_OP_RESINFO:
         emitResinfo(compiler, instr);

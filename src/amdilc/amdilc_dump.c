@@ -651,6 +651,10 @@ static void dumpInstruction(
         // Sampler ID is ignored
         fprintf(file, "load_resource(%u)", GET_BITS(instr->control, 0, 7));
         break;
+    case IL_OP_LOAD_FPTR:
+        // Sampler ID is ignored
+        fprintf(file, "load_fptr_resource(%u)", GET_BITS(instr->control, 0, 7));
+        break;
     case IL_OP_RESINFO:
         if (GET_BITS(instr->control, 9, 15)) {
             LOGW("unhandled resinfo flags 0x%X\n", instr->control);

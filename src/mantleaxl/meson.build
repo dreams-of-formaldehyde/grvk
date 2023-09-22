@@ -1,6 +1,7 @@
 mantleaxl_src = [
   'main.c',
   'mantleaxl_border_color_palette_ext.c',
+  'mantleaxl_adv_msaa.c',
   'mantleaxl_lib_version.c',
   'stub.c'
 ]

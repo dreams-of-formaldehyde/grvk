@@ -72,6 +72,9 @@ GR_RESULT GR_STDCALL grDestroyObject(
     case GR_OBJ_TYPE_MSAA_STATE_OBJECT:
         // Nothing to do
         break;
+    case GR_OBJ_TYPE_ADVANCED_MSAA_STATE_OBJECT:
+        // Nothing to do
+        break;
     case GR_OBJ_TYPE_PIPELINE: {
         GrPipeline* grPipeline = (GrPipeline*)grObject;
 

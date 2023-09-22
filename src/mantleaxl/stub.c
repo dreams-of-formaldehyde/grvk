@@ -1,26 +1,6 @@
 #include "mantle/mantleExt.h"
 #include "logger.h"
 
-// Advanced Multisampling Extnension Functions
-
-GR_RESULT GR_STDCALL grCreateAdvancedMsaaState(
-    GR_DEVICE device,
-    const GR_ADVANCED_MSAA_STATE_CREATE_INFO* pCreateInfo,
-    GR_MSAA_STATE_OBJECT* pState)
-{
-    LOGW("STUB\n");
-    return GR_UNSUPPORTED;
-}
-
-GR_RESULT GR_STDCALL grCreateFmaskImageView(
-    GR_DEVICE device,
-    const GR_FMASK_IMAGE_VIEW_CREATE_INFO* pCreateInfo,
-    GR_IMAGE_VIEW* pView)
-{
-    LOGW("STUB\n");
-    return GR_UNSUPPORTED;
-}
-
 // Copy Occlusion Query Data Extension Functions
 
 GR_RESULT GR_STDCALL grCmdCopyOcclusionData(

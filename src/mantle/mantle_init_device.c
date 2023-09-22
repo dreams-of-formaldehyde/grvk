@@ -882,16 +882,28 @@ GR_RESULT GR_STDCALL grCreateDevice(
         VK_EXT_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME,
         VK_VALVE_MUTABLE_DESCRIPTOR_TYPE_EXTENSION_NAME,
         NULL,
+        NULL,
+        NULL,
     };
 
-    unsigned deviceExtensionCount = COUNT_OF(deviceExtensions) - 1;
+    unsigned deviceExtensionCount = COUNT_OF(deviceExtensions) - 3;
     bool descriptorBufferSupported = false;
+    bool mixedMsaaSupported = false;
+    bool fragmentMaskSupported = false;
 
     for (unsigned i = 0; i < supportedExtensionCount; i++) {
-        if (strcmp(extensionProperties[i].extensionName, VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME) == 0) {
+        if (!descriptorBufferSupported && strcmp(extensionProperties[i].extensionName, VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME) == 0) {
             descriptorBufferSupported = true; // TODO: also check the extension properties
             deviceExtensions[deviceExtensionCount++] = VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME;
-            break;
+        } else if (!mixedMsaaSupported && strcmp(extensionProperties[i].extensionName, VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME) == 0) {
+            mixedMsaaSupported = true;
+            deviceExtensions[deviceExtensionCount++] = VK_NV_FRAMEBUFFER_MIXED_SAMPLES_EXTENSION_NAME;
+        } else if (!mixedMsaaSupported && strcmp(extensionProperties[i].extensionName, VK_AMD_MIXED_ATTACHMENT_SAMPLES_EXTENSION_NAME) == 0) {
+            mixedMsaaSupported = true;
+            deviceExtensions[deviceExtensionCount++] = VK_AMD_MIXED_ATTACHMENT_SAMPLES_EXTENSION_NAME;
+        } else if (!fragmentMaskSupported && strcmp(extensionProperties[i].extensionName, VK_AMD_SHADER_FRAGMENT_MASK_EXTENSION_NAME) == 0) {
+            fragmentMaskSupported = true;
+            deviceExtensions[deviceExtensionCount++] = VK_AMD_SHADER_FRAGMENT_MASK_EXTENSION_NAME;
         }
     }
 
@@ -974,6 +986,8 @@ GR_RESULT GR_STDCALL grCreateDevice(
         .computeAtomicCounterBuffer = VK_NULL_HANDLE, // Initialized below
         .computeAtomicCounterSet = VK_NULL_HANDLE, // Initialized below
         .grBorderColorPalette = NULL,
+        .mixedMsaaSupported = mixedMsaaSupported,
+        .fragmentMaskSupported = fragmentMaskSupported,
         .descriptorBufferSupported = descriptorBufferSupported,
         .descriptorBufferAllowPreparedImageView = descriptorBufferSupported && grPhysicalGpu->descriptorBufferProps.storageImageDescriptorSize <= MEMBER_SIZEOF(GrImageView, storageDescriptor) && grPhysicalGpu->descriptorBufferProps.sampledImageDescriptorSize <= MEMBER_SIZEOF(GrImageView, sampledDescriptor) && queriedDescriptorBufferFeatures.descriptorBufferImageLayoutIgnored,
         .descriptorBufferAllowPreparedSampler = descriptorBufferSupported && grPhysicalGpu->descriptorBufferProps.samplerDescriptorSize <= MEMBER_SIZEOF(GrSampler, descriptor),

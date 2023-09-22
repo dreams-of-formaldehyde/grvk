@@ -571,7 +571,10 @@ GR_RESULT GR_STDCALL grCreateShader(
     GrDevice* grDevice = (GrDevice*)device;
 
     // ALLOW_RE_Z flag doesn't have a Vulkan equivalent. RADV determines it automatically.
-    IlcShader ilcShader = ilcCompileShader(pCreateInfo->pCode, pCreateInfo->codeSize, NULL);
+    IlcOptions options = {
+        .fragmentMaskSupported = grDevice->fragmentMaskSupported,
+    };
+    IlcShader ilcShader = ilcCompileShader(pCreateInfo->pCode, pCreateInfo->codeSize, &options);
 
     GrShader* grShader = malloc(sizeof(GrShader));
     *grShader = (GrShader) {

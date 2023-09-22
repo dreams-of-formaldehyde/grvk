@@ -38,6 +38,7 @@ typedef enum _GrObjectType {
     GR_OBJ_TYPE_IMAGE,
     GR_OBJ_TYPE_IMAGE_VIEW,
     GR_OBJ_TYPE_MSAA_STATE_OBJECT,
+    GR_OBJ_TYPE_ADVANCED_MSAA_STATE_OBJECT,
     GR_OBJ_TYPE_PHYSICAL_GPU,
     GR_OBJ_TYPE_PIPELINE,
     GR_OBJ_TYPE_QUERY_POOL,
@@ -270,6 +271,8 @@ typedef struct _GrDevice {
     VkDescriptorPool computeAtomicCounterPool;
     VkDescriptorSet computeAtomicCounterSet;
     GrBorderColorPalette* grBorderColorPalette;
+    bool mixedMsaaSupported;
+    bool fragmentMaskSupported;
     bool descriptorBufferSupported;
     bool descriptorBufferAllowPreparedImageView;
     bool descriptorBufferAllowPreparedSampler;
@@ -328,6 +331,15 @@ typedef struct _GrMsaaStateObject {
     VkSampleCountFlags sampleCountFlags;
     VkSampleMask sampleMask;
 } GrMsaaStateObject;
+
+typedef struct _GrAdvancedMsaaStateObject {
+    GrObject grObj;
+    VkSampleCountFlags sampleCountFlags;
+    VkSampleMask sampleMask;
+    bool customSamplePatternEnabled;
+    /* 2x2 per 16 samples */
+    VkSampleLocationEXT sampleLocations[64];
+} GrAdvancedMsaaStateObject;
 
 typedef struct _GrPhysicalGpu {
     GrBaseObject grBaseObj;

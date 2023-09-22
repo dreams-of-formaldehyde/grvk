@@ -369,6 +369,10 @@ VkImageLayout getVkImageLayout(
         return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     case GR_IMAGE_STATE_DISCARD:
         return VK_IMAGE_LAYOUT_UNDEFINED;
+    case GR_IMAGE_STATE_RESOLVE_SOURCE:
+        return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    case GR_IMAGE_STATE_RESOLVE_DESTINATION:
+        return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     default:
         break;
     }
@@ -476,6 +480,10 @@ VkAccessFlags getVkAccessFlagsImage(
         return VK_ACCESS_TRANSFER_WRITE_BIT;
     case GR_IMAGE_STATE_DISCARD:
         return 0;
+    case GR_IMAGE_STATE_RESOLVE_SOURCE:
+        return VK_ACCESS_TRANSFER_READ_BIT;
+    case GR_IMAGE_STATE_RESOLVE_DESTINATION:
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
     default:
         break;
     }
@@ -536,6 +544,10 @@ VkPipelineStageFlags getVkPipelineStageFlagsImage(
         return VK_PIPELINE_STAGE_TRANSFER_BIT;
     case GR_IMAGE_STATE_DISCARD:
         return VK_PIPELINE_STAGE_NONE;
+    case GR_IMAGE_STATE_RESOLVE_SOURCE:
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
+    case GR_IMAGE_STATE_RESOLVE_DESTINATION:
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
     default:
         break;
     }

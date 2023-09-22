@@ -76,18 +76,6 @@ GR_RESULT GR_STDCALL grOpenPeerImage(
     return GR_UNSUPPORTED;
 }
 
-// Command Buffer Building Functions
-
-GR_VOID GR_STDCALL grCmdResolveImage(
-    GR_CMD_BUFFER cmdBuffer,
-    GR_IMAGE srcImage,
-    GR_IMAGE destImage,
-    GR_UINT regionCount,
-    const GR_IMAGE_RESOLVE* pRegions)
-{
-    LOGW("STUB\n");
-}
-
 GR_VOID GR_STDCALL grCmdCloneImageData(
     GR_CMD_BUFFER cmdBuffer,
     GR_IMAGE srcImage,

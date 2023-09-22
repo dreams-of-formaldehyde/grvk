@@ -1218,6 +1218,51 @@ GR_VOID GR_STDCALL grCmdFillMemory(
                         fillSize, data);
 }
 
+GR_VOID GR_STDCALL grCmdResolveImage(
+    GR_CMD_BUFFER cmdBuffer,
+    GR_IMAGE srcImage,
+    GR_IMAGE destImage,
+    GR_UINT regionCount,
+    const GR_IMAGE_RESOLVE* pRegions)
+{
+    LOGT("%p %p %p %u %p\n", cmdBuffer, srcImage, destImage, regionCount, pRegions);
+    GrCmdBuffer* grCmdBuffer = (GrCmdBuffer*)cmdBuffer;
+    const GrDevice* grDevice = GET_OBJ_DEVICE(grCmdBuffer);
+    GrImage* grSrcImage = (GrImage*)srcImage;
+    GrImage* grDstImage = (GrImage*)destImage;
+    unsigned srcTileSize = getVkFormatTileSize(grSrcImage->format);
+    unsigned dstTileSize = getVkFormatTileSize(grDstImage->format);
+
+    grCmdBufferEndRenderPass(grCmdBuffer);
+
+    STACK_ARRAY(VkImageResolve, vkResolves, 128, regionCount);
+
+    for (unsigned i = 0; i < regionCount; i++) {
+        vkResolves[i] = (VkImageResolve) {
+            .srcSubresource = getVkImageSubresourceLayers(pRegions[i].srcSubresource),
+            .srcOffset = {
+                .x = pRegions[i].srcOffset.x * srcTileSize,
+                .y = pRegions[i].srcOffset.y * srcTileSize,
+            },
+            .dstSubresource = getVkImageSubresourceLayers(pRegions[i].destSubresource),
+            .dstOffset = {
+                .x = pRegions[i].destOffset.x * dstTileSize,
+                .y = pRegions[i].destOffset.y * dstTileSize,
+            },
+            .extent = { pRegions[i].extent.width, pRegions[i].extent.height },
+        };
+    }
+
+    VKD.vkCmdResolveImage(grCmdBuffer->commandBuffer, grSrcImage->image,
+                          getVkImageLayout(GR_IMAGE_STATE_RESOLVE_SOURCE),
+                          grDstImage->image,
+                          getVkImageLayout(GR_IMAGE_STATE_RESOLVE_DESTINATION),
+                          regionCount,
+                          vkResolves);
+
+    STACK_ARRAY_FINISH(vkResolves);
+}
+
 GR_VOID GR_STDCALL grCmdClearColorImage(
     GR_CMD_BUFFER cmdBuffer,
     GR_IMAGE image,

@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
         fread(data, 1, size, file);
         fclose(file);
 
-        ilcCompileShader(data, size);
+        ilcCompileShader(data, size, NULL);
 
         free(data);
     }

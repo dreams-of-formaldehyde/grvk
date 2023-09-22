@@ -94,13 +94,17 @@ static void dumpKernel(
 
 IlcShader ilcCompileShader(
     const void* code,
-    unsigned size)
+    unsigned size,
+    const IlcOptions* options)
 {
     char name[NAME_LEN];
     getShaderName(name, NAME_LEN, code, size);
     LOGV("compiling %s...\n", name);
 
     Kernel* kernel = calloc(1, sizeof(Kernel));
+    if (options != NULL) {
+        memcpy(&kernel->options, options, sizeof(*options));
+    }
 
     ilcDecodeStream(kernel, (Token*)code, size / sizeof(Token));
 

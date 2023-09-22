@@ -84,6 +84,7 @@ typedef struct {
 } Instruction;
 
 typedef struct {
+    IlcOptions options;
     uint8_t clientType;
     uint8_t majorVersion;
     uint8_t minorVersion;

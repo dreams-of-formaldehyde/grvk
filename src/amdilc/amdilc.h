@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
 
@@ -65,9 +66,14 @@ typedef struct _IlcBindingPatchEntry {
     uint32_t descriptorSetIndex;
 } IlcBindingPatchEntry;
 
+typedef struct _IlcOptions {
+    bool fragmentMaskSupported;
+} IlcOptions;
+
 IlcShader ilcCompileShader(
     const void* code,
-    unsigned size);
+    unsigned size,
+    const IlcOptions* options);
 
 IlcRecompiledShader ilcRecompileHullShader(
     const void* code,

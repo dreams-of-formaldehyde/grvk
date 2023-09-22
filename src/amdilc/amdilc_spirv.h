@@ -277,6 +277,12 @@ IlcSpvId ilcSpvPutImageFetch(
     unsigned operandIdCount,
     const IlcSpvId* operandIds);
 
+IlcSpvId ilcSpvPutFragmentMaskFetchAMD(
+    IlcSpvModule* module,
+    IlcSpvId resultTypeId,
+    IlcSpvId imageId,
+    IlcSpvId coordinateId);
+
 IlcSpvId ilcSpvPutImageRead(
     IlcSpvModule* module,
     IlcSpvId resultTypeId,

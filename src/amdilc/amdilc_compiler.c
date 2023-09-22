@@ -3122,43 +3122,55 @@ static void emitLoadFptr(
     }
 
     // TODO: use OpFragmentMaskFetchAMD if it's available
-    // needs this coordinate as well
-    /* IlcSpvId srcId = loadSource(compiler, &compiler->kernel->srcBuffer[instr->srcs[0]], COMP_MASK_XYZW, compiler->int4Id);*/
-
     IlcSpvId resourceId = ilcSpvPutLoad(compiler->module, resource->typeId, emitResourceLoad(compiler, resource, SpvStorageClassUniformConstant));
 
-    IlcSpvId zeroId = ilcSpvPutConstant(compiler->module, compiler->uintId, ZERO_LITERAL);
-    IlcSpvId eightId = ilcSpvPutConstant(compiler->module, compiler->uintId, 8u);
-    IlcSpvId oneId = ilcSpvPutConstant(compiler->module, compiler->uintId, 1u);
-    IlcSpvId fourId = ilcSpvPutConstant(compiler->module, compiler->uintId, 4u);
+    if (compiler->kernel->options.fragmentMaskSupported) {
+        ilcSpvPutExtension(compiler->module, "SPV_AMD_shader_fragment_mask");
+        ilcSpvPutCapability(compiler->module, SpvCapabilityFragmentMaskAMD);
+        // needs this coordinate as well
+        IlcSpvId srcId = loadSource(compiler, &compiler->kernel->srcBuffer[instr->srcs[0]], COMP_MASK_XYZW, compiler->int4Id);
+        IlcSpvId fetchId = ilcSpvPutFragmentMaskFetchAMD(compiler->module, compiler->uintId, resourceId,
+                                                         srcId);
 
-    ilcSpvPutCapability(compiler->module, SpvCapabilityImageQuery);
-    IlcSpvId sampleCountId = ilcSpvPutImageQuerySamples(compiler->module, compiler->uintId, resourceId);
-    IlcSpvId xConstId = ilcSpvPutConstant(compiler->module, compiler->uintId, 0x76543210u);
-    IlcSpvId yConstId = ilcSpvPutConstant(compiler->module, compiler->uintId, 0xfedcba98u);
+        IlcSpvId zeroId = ilcSpvPutConstant(compiler->module, compiler->uintId, ZERO_LITERAL);
+        const IlcSpvWord constituents[] = { fetchId, zeroId, zeroId, zeroId };
+        fetchId = ilcSpvPutCompositeConstruct(compiler->module, compiler->uint4Id,
+                                              4, constituents);
+        storeDestination(compiler, dst, fetchId, compiler->uint4Id);
+    } else {
+        IlcSpvId zeroId = ilcSpvPutConstant(compiler->module, compiler->uintId, ZERO_LITERAL);
+        IlcSpvId eightId = ilcSpvPutConstant(compiler->module, compiler->uintId, 8u);
+        IlcSpvId oneId = ilcSpvPutConstant(compiler->module, compiler->uintId, 1u);
+        IlcSpvId fourId = ilcSpvPutConstant(compiler->module, compiler->uintId, 4u);
 
-    IlcSpvId condId = ilcSpvPutOp2(compiler->module, SpvOpUGreaterThanEqual, compiler->boolId,
-                                   sampleCountId, eightId);
+        ilcSpvPutCapability(compiler->module, SpvCapabilityImageQuery);
+        IlcSpvId sampleCountId = ilcSpvPutImageQuerySamples(compiler->module, compiler->uintId, resourceId);
+        IlcSpvId xConstId = ilcSpvPutConstant(compiler->module, compiler->uintId, 0x76543210u);
+        IlcSpvId yConstId = ilcSpvPutConstant(compiler->module, compiler->uintId, 0xfedcba98u);
 
-    IlcSpvId xId = ilcSpvPutOp2(compiler->module, SpvOpIMul, compiler->uintId, sampleCountId, fourId);
-    xId = ilcSpvPutOp2(compiler->module, SpvOpShiftLeftLogical, compiler->uintId, oneId, xId);
-    xId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, xId, oneId);
-    xId = ilcSpvPutOp2(compiler->module, SpvOpBitwiseAnd, compiler->uintId, xId, xConstId);
+        IlcSpvId condId = ilcSpvPutOp2(compiler->module, SpvOpUGreaterThanEqual, compiler->boolId,
+                                       sampleCountId, eightId);
 
-    xId = ilcSpvPutSelect(compiler->module, compiler->uintId, condId, xConstId, xId);
+        IlcSpvId xId = ilcSpvPutOp2(compiler->module, SpvOpIMul, compiler->uintId, sampleCountId, fourId);
+        xId = ilcSpvPutOp2(compiler->module, SpvOpShiftLeftLogical, compiler->uintId, oneId, xId);
+        xId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, xId, oneId);
+        xId = ilcSpvPutOp2(compiler->module, SpvOpBitwiseAnd, compiler->uintId, xId, xConstId);
 
-    IlcSpvId yId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, sampleCountId, eightId);
-    yId = ilcSpvPutOp2(compiler->module, SpvOpIMul, compiler->uintId, yId, fourId);
-    yId = ilcSpvPutOp2(compiler->module, SpvOpShiftLeftLogical, compiler->uintId, oneId, yId);
-    yId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, yId, oneId);
-    yId = ilcSpvPutOp2(compiler->module, SpvOpBitwiseAnd, compiler->uintId, yId, yConstId);
+        xId = ilcSpvPutSelect(compiler->module, compiler->uintId, condId, xConstId, xId);
 
-    yId = ilcSpvPutSelect(compiler->module, compiler->uintId, condId, yId, zeroId);
-    const IlcSpvWord constituents[] = { xId, yId, zeroId, zeroId };
-    IlcSpvId paletteId = ilcSpvPutCompositeConstruct(compiler->module, compiler->uint4Id,
-                                                        4, constituents);
+        IlcSpvId yId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, sampleCountId, eightId);
+        yId = ilcSpvPutOp2(compiler->module, SpvOpIMul, compiler->uintId, yId, fourId);
+        yId = ilcSpvPutOp2(compiler->module, SpvOpShiftLeftLogical, compiler->uintId, oneId, yId);
+        yId = ilcSpvPutOp2(compiler->module, SpvOpISub, compiler->uintId, yId, oneId);
+        yId = ilcSpvPutOp2(compiler->module, SpvOpBitwiseAnd, compiler->uintId, yId, yConstId);
 
-    storeDestination(compiler, dst, paletteId, compiler->uint4Id);
+        yId = ilcSpvPutSelect(compiler->module, compiler->uintId, condId, yId, zeroId);
+        const IlcSpvWord constituents[] = { xId, yId, zeroId, zeroId };
+        IlcSpvId paletteId = ilcSpvPutCompositeConstruct(compiler->module, compiler->uint4Id,
+                                                         4, constituents);
+
+        storeDestination(compiler, dst, paletteId, compiler->uint4Id);
+    }
 }
 
 static void emitResinfo(

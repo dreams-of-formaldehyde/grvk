@@ -817,6 +817,23 @@ IlcSpvId ilcSpvPutImageFetch(
     return id;
 }
 
+IlcSpvId ilcSpvPutFragmentMaskFetchAMD(
+    IlcSpvModule* module,
+    IlcSpvId resultTypeId,
+    IlcSpvId imageId,
+    IlcSpvId coordinateId)
+{
+    IlcSpvBuffer* buffer = &module->buffer[ID_CODE];
+
+    IlcSpvId id = ilcSpvAllocId(module);
+    putInstr(buffer, SpvOpFragmentMaskFetchAMD, 5);
+    putWord(buffer, resultTypeId);
+    putWord(buffer, id);
+    putWord(buffer, imageId);
+    putWord(buffer, coordinateId);
+    return id;
+}
+
 IlcSpvId ilcSpvPutImageRead(
     IlcSpvModule* module,
     IlcSpvId resultTypeId,

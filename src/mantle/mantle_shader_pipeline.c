@@ -1,5 +1,6 @@
 #include "mantle_internal.h"
 #include "amdilc.h"
+#include "crc32.h"
 
 typedef struct _Stage {
     const GR_PIPELINE_SHADER* shader;
@@ -1258,6 +1259,8 @@ GR_RESULT GR_STDCALL grStorePipeline(
             }
         }
         LOGT("offset is %p %d\n", (uint8_t*)chunk - (uint8_t*)pData, sz);
+        /* calculate CRC32 */
+        blob->checksum = crc32_fast(blob->data, *pDataSize - sizeof(*blob), 0);
     } else {
         *pDataSize = sz;
     }
@@ -1294,6 +1297,11 @@ GR_RESULT GR_STDCALL grLoadPipeline(
     GrBaseBlobChunk* chunk = CAST_CHUNK_BASE(blob);
 
     GR_RESULT res = GR_ERROR_BAD_PIPELINE_DATA;
+    unsigned checksum = crc32_fast(blob->data, dataSize - sizeof(*blob), 0);
+    if (checksum != blob->checksum) {
+        LOGE("checksum mismatch, expected 0x%X, got 0x%X\n", blob->checksum, checksum);
+        return GR_ERROR_BAD_PIPELINE_DATA;
+    }
     /* chunk size validation */
     while (sz < dataSize) {
         if ((sz + chunk->size + sizeof(GrBaseBlobChunk)) > dataSize) {

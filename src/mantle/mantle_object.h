@@ -493,7 +493,7 @@ typedef struct _GrStoredPipelineBlob {
     unsigned version;// TODO: handle build ids and checksums
     unsigned deviceId;
     unsigned driverId;
-    unsigned pad;
+    unsigned checksum;
     uint8_t data[];
 } GrStoredPipelineBlob;
 

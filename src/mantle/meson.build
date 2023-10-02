@@ -19,6 +19,7 @@ mantle_src = [
   'stub.c',
   'util.c',
   'vulkan_loader.c',
+  'crc32.c'
 ]
 
 mantle_def = 'mantle' + dll_variant + '.def'

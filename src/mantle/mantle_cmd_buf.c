@@ -867,13 +867,6 @@ GR_VOID GR_STDCALL grCmdDraw(
     GrCmdBuffer* grCmdBuffer = (GrCmdBuffer*)cmdBuffer;
     const GrDevice* grDevice = GET_OBJ_DEVICE(grCmdBuffer);
 
-#ifndef TESS
-    if (grCmdBuffer->bindPoints[0].grPipeline->hasTessellation) {
-        // Skip draw
-        return;
-    }
-#endif
-
     grCmdBufferUpdateResources(grCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
     grCmdBufferBeginRenderPass(grCmdBuffer);
 
@@ -894,13 +887,6 @@ GR_VOID GR_STDCALL grCmdDrawIndexed(
     GrCmdBuffer* grCmdBuffer = (GrCmdBuffer*)cmdBuffer;
     const GrDevice* grDevice = GET_OBJ_DEVICE(grCmdBuffer);
 
-#ifndef TESS
-    if (grCmdBuffer->bindPoints[0].grPipeline->hasTessellation) {
-        // Skip draw
-        return;
-    }
-#endif
-
     grCmdBufferUpdateResources(grCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
     grCmdBufferBeginRenderPass(grCmdBuffer);
 
@@ -918,13 +904,6 @@ GR_VOID GR_STDCALL grCmdDrawIndirect(
     const GrDevice* grDevice = GET_OBJ_DEVICE(grCmdBuffer);
     GrGpuMemory* grGpuMemory = (GrGpuMemory*)mem;
 
-#ifndef TESS
-    if (grCmdBuffer->bindPoints[0].grPipeline->hasTessellation) {
-        // Skip draw
-        return;
-    }
-#endif
-
     grCmdBufferUpdateResources(grCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
     grCmdBufferBeginRenderPass(grCmdBuffer);
 
@@ -940,13 +919,6 @@ GR_VOID GR_STDCALL grCmdDrawIndexedIndirect(
     GrCmdBuffer* grCmdBuffer = (GrCmdBuffer*)cmdBuffer;
     const GrDevice* grDevice = GET_OBJ_DEVICE(grCmdBuffer);
     GrGpuMemory* grGpuMemory = (GrGpuMemory*)mem;
-
-#ifndef TESS
-    if (grCmdBuffer->bindPoints[0].grPipeline->hasTessellation) {
-        // Skip draw
-        return;
-    }
-#endif
 
     grCmdBufferUpdateResources(grCmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS);
     grCmdBufferBeginRenderPass(grCmdBuffer);

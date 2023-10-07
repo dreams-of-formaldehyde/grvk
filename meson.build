@@ -14,10 +14,6 @@ grvk_version = vcs_tag(
   output: 'version.h',
 )
 
-if get_option('tessellation_enabled')
-    add_global_arguments('-DTESS', language : 'c')
-endif
-
 if get_option('pipeline_storage')
     add_global_arguments('-DPIPELINE_CACHE', language : 'c')
 endif

@@ -4283,7 +4283,6 @@ static void emitInstr(
     }
 }
 
-#ifdef TESS
 static void emitHullMainFunction(
     IlcCompiler* compiler)
 {
@@ -4342,7 +4341,6 @@ static void emitHullMainFunction(
     ilcSpvPutReturn(compiler->module);
     ilcSpvPutFunctionEnd(compiler->module);
 }
-#endif // TESS
 
 static void emitEntryPoint(
     IlcCompiler* compiler)
@@ -4497,7 +4495,6 @@ IlcShader ilcCompileKernel(
 
     emitImplicitInputs(&compiler);
 
-#ifdef TESS
     if (compiler.kernel->shaderType != IL_SHADER_HULL) {
         emitFunc(&compiler, compiler.entryPointId);
     }
@@ -4509,20 +4506,6 @@ IlcShader ilcCompileKernel(
     if (compiler.kernel->shaderType == IL_SHADER_HULL) {
         emitHullMainFunction(&compiler);
     }
-#else
-    emitFunc(&compiler, compiler.entryPointId);
-
-    if (compiler.kernel->shaderType == IL_SHADER_HULL ||
-        compiler.kernel->shaderType == IL_SHADER_DOMAIN) {
-        LOGW("unhandled hull/domain shader type\n");
-        ilcSpvPutReturn(compiler.module);
-        ilcSpvPutFunctionEnd(compiler.module);
-    } else {
-        for (int i = 0; i < kernel->instrCount; i++) {
-            emitInstr(&compiler, &kernel->instrs[i]);
-        }
-    }
-#endif
 
     emitEntryPoint(&compiler);
 

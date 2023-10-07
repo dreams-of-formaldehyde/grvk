@@ -602,7 +602,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
     LOGT("%p %p %p\n", device, pCreateInfo, pPipeline);
     GrDevice* grDevice = (GrDevice*)device;
     GR_RESULT res = GR_SUCCESS;
-    bool hasTessellation = false;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 
     VkShaderModule shaderModules[MAX_STAGE_COUNT] = { 0 };
@@ -717,7 +716,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
             patchEntries[i],
             grShader->bindingCount);
 
-#ifdef TESS
         if (stage->flags == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT && stages[0].shader->shader != GR_NULL_HANDLE) {
             GrShader* grVertexShader = (GrShader*)stages[0].shader->shader;
             IlcRecompiledShader recompiledShader = ilcRecompileHullShader(code, codeSize,
@@ -726,7 +724,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
             code = recompiledShader.code;
             codeSize = recompiledShader.codeSize;
         }
-#endif
 
         const VkShaderModuleCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -768,11 +765,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
         };
 
         stageCount++;
-
-        if (stage->flags == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT ||
-            stage->flags == VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
-            hasTessellation = true;
-        }
     }
 
     // Use a geometry shader to emulate RECT_LIST primitive topology
@@ -874,7 +866,6 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
                         VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT : 0) |
         (grDevice->descriptorBufferSupported ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0),
         .createInfo = pipelineCreateInfo,
-        .hasTessellation = hasTessellation,
         .pipeline = VK_NULL_HANDLE, // We don't know the attachment formats yet (Frostbite bug)
         .pipelineLayout = pipelineLayout,
         .stageCount = stageCount,
@@ -1071,7 +1062,6 @@ GR_RESULT GR_STDCALL grCreateComputePipeline(
         .shaderCodeSizes = { grShader->codeSize },
         .createFlags = pipelineCreateInfo.flags,
         .createInfo = NULL,
-        .hasTessellation = false,
         .pipeline = vkPipeline,
         .pipelineLayout = pipelineLayout,
         .stageCount = 1,
@@ -1495,7 +1485,6 @@ GR_RESULT GR_STDCALL grLoadPipeline(
     }
 
     VkPipelineShaderStageCreateInfo computeStageInfo;
-    bool hasTessellation = false;
 
     for (int i = 0; i < stageCount; i++) {
         /* TODO: validate spec infos */
@@ -1526,10 +1515,6 @@ GR_RESULT GR_STDCALL grLoadPipeline(
                 .pName = "main",
                 .pSpecializationInfo = &specInfos[i],
             };
-            if (stageFlags[i] == VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT ||
-                stageFlags[i] == VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT) {
-                hasTessellation = true;
-            }
         } else {
             computeStageInfo = (VkPipelineShaderStageCreateInfo) {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -1581,7 +1566,6 @@ GR_RESULT GR_STDCALL grLoadPipeline(
         .shaderCodeSizes = { 0 },
         .createFlags = pipelineCreateFlags,
         .createInfo = createInfo,
-        .hasTessellation = hasTessellation,
         .pipeline = vkPipeline,
         .pipelineLayout = pipelineLayout,
         .stageCount = stageCount,

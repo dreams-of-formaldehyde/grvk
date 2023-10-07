@@ -6,11 +6,8 @@ amdilc_src = [
   'amdilc_rect_gs_compiler.c',
   'amdilc_binding_patcher.c',
   'amdilc_spirv.c',
+  'amdilc_passthrough_compiler.c',
 ]
-
-if get_option('tessellation_enabled')
-    amdilc_src += 'amdilc_passthrough_compiler.c'
-endif
 
 amdilc_lib = static_library('amdilc', amdilc_src,
   dependencies        : [ logger_dep ],

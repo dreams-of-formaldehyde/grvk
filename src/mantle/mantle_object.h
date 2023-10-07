@@ -355,7 +355,6 @@ typedef struct _GrPipeline {
     unsigned shaderCodeSizes[MAX_STAGE_COUNT];
     VkPipelineCreateFlags createFlags;
     PipelineCreateInfo* createInfo;
-    bool hasTessellation;
     VkPipeline pipeline;
     VkPipelineLayout pipelineLayout;
     unsigned stageCount;

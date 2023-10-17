@@ -972,6 +972,7 @@ GR_RESULT GR_STDCALL grCreateDevice(
         .physicalDevice = grPhysicalGpu->physicalDevice,
         .memoryProperties = memoryProperties,
         .descriptorBufferProps = grPhysicalGpu->descriptorBufferProps,
+        .vendorId = grPhysicalGpu->physicalDeviceProps.properties.vendorID,
         .memoryHeapCount = memoryHeapCount,
         .memoryHeapMap = { 0 }, // Initialized below
         .atomicCounterSetLayout = VK_NULL_HANDLE, // Initialized below
@@ -991,6 +992,9 @@ GR_RESULT GR_STDCALL grCreateDevice(
         .descriptorBufferSupported = descriptorBufferSupported,
         .descriptorBufferAllowPreparedImageView = descriptorBufferSupported && grPhysicalGpu->descriptorBufferProps.storageImageDescriptorSize <= MEMBER_SIZEOF(GrImageView, storageDescriptor) && grPhysicalGpu->descriptorBufferProps.sampledImageDescriptorSize <= MEMBER_SIZEOF(GrImageView, sampledDescriptor) && queriedDescriptorBufferFeatures.descriptorBufferImageLayoutIgnored,
         .descriptorBufferAllowPreparedSampler = descriptorBufferSupported && grPhysicalGpu->descriptorBufferProps.samplerDescriptorSize <= MEMBER_SIZEOF(GrSampler, descriptor),
+        // only set this if it's an AMD device and if descriptor buffer is supported
+        // otherwise it's kinda useless and requires two descriptors per slot of GR_DESCRIPTOR_SET anyway
+        .descriptorUseSingleDescriptor = grPhysicalGpu->physicalDeviceProps.properties.vendorID == 0x1002 && descriptorBufferSupported,
         .maxMutableUniformDescriptorSize = 0, // Initialized below
         .maxMutableStorageDescriptorSize = 0, // Initialized below
         .maxMutableDescriptorSize = 0, // Initialized below

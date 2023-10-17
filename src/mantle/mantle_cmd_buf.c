@@ -81,7 +81,7 @@ static void setupDescriptorSets(
         }
 
         pDescriptorSets[i] = currentSet->descriptorSet;
-        pOffsets[i] = descriptorSlotOffset * DESCRIPTORS_PER_SLOT;
+        pOffsets[i] = descriptorSlotOffset * (grDevice->descriptorUseSingleDescriptor ? 1 : DESCRIPTORS_PER_SLOT);
         // Pass buffer strides down to the shader
         for (unsigned j = 0; j < descriptorSlot->strideCount; j++) {
             VKD.vkCmdPushConstants(grCmdBuffer->commandBuffer, pipelineLayout,
@@ -158,7 +158,12 @@ static void setupDescriptorBuffers(
         }
 
         pBufferAddresses[i] = currentSet->descriptorBufferAddress;
-        pOffsets[i] = descriptorSlotOffset * DESCRIPTORS_PER_SLOT * grDevice->maxMutableDescriptorSize;
+        if (grDevice->descriptorUseSingleDescriptor) {
+            pOffsets[i * 2] = descriptorSlotOffset * grDevice->maxMutableDescriptorSize;
+            pOffsets[i * 2 + 1] = descriptorSlotOffset * grDevice->maxMutableDescriptorSize + AMD_DESCRIPTOR_BUFFER_SSBO_OFFSET;
+        } else {
+            pOffsets[i] = descriptorSlotOffset * DESCRIPTORS_PER_SLOT * grDevice->maxMutableDescriptorSize;
+        }
         // Pass buffer strides down to the shader
         for (unsigned j = 0; j < descriptorSlot->strideCount; j++) {
             VKD.vkCmdPushConstants(grCmdBuffer->commandBuffer, pipelineLayout,
@@ -207,7 +212,12 @@ static void grCmdBufferBindDescriptorBuffers(
             dirtyBufferState = true;
             break;
         } else {
-            setIndices[i] = bufferIndex;
+            if (grDevice->descriptorUseSingleDescriptor) {
+                setIndices[i * 2] = bufferIndex;
+                setIndices[i * 2 + 1] = bufferIndex;
+            } else {
+                setIndices[i * 2] = bufferIndex;
+            }
         }
     }
 
@@ -227,13 +237,16 @@ static void grCmdBufferBindDescriptorBuffers(
         for (unsigned i = 0; i < COUNT_OF(grCmdBuffer->bindPoints); i++) {
             for (unsigned j = 0; j < grCmdBuffer->bindPoints[i].boundDescriptorSetCount; j++) {
                 unsigned descriptorBufferIndex = 0xFFFFFFFF;
-                for (unsigned k = 0; k < grCmdBuffer->descriptorBufferCount; k++) {
-                    if (grCmdBuffer->bindPoints[i].descriptorBufferAddresses[j] == grCmdBuffer->bufferAddresses[k]) {
-                        descriptorBufferIndex = k;
-                        break;
+                // can't overflow 30 anyway with such setup
+                if (grDevice->descriptorUseSingleDescriptor) {
+                    for (unsigned k = 0; k < grCmdBuffer->descriptorBufferCount; k++) {
+                        if (grCmdBuffer->bindPoints[i].descriptorBufferAddresses[j] == grCmdBuffer->bufferAddresses[k]) {
+                            descriptorBufferIndex = k;
+                            break;
+                        }
                     }
                 }
-                if (descriptorBufferIndex >= grCmdBuffer->descriptorBufferCount) {
+                if (grDevice->descriptorUseSingleDescriptor || descriptorBufferIndex >= grCmdBuffer->descriptorBufferCount) {
                     if (grCmdBuffer->descriptorBufferCount >= COUNT_OF(grCmdBuffer->bufferAddresses)) {
                         LOGE("descriptor buffer overflow\n");
                         assert(false);
@@ -249,7 +262,12 @@ static void grCmdBufferBindDescriptorBuffers(
                             | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                     };
                 }
-                setIndices[i * COUNT_OF(bindPoint->descriptorOffsets) + j] = descriptorBufferIndex;
+                if (grDevice->descriptorUseSingleDescriptor) {
+                    setIndices[i * COUNT_OF(bindPoint->descriptorOffsets) + j * 2] = descriptorBufferIndex;
+                    setIndices[i * COUNT_OF(bindPoint->descriptorOffsets) + j * 2 + 1] = descriptorBufferIndex;
+                } else {
+                    setIndices[i * COUNT_OF(bindPoint->descriptorOffsets) + j] = descriptorBufferIndex;
+                }
             }
         }
 
@@ -265,7 +283,7 @@ static void grCmdBufferBindDescriptorBuffers(
                 grCmdBuffer->commandBuffer,
                 (VkPipelineBindPoint)i, rebindPipeline->pipelineLayout,
                 DESCRIPTOR_BUFFERS_BASE_DESCRIPTOR_SET_ID,
-                descriptorBindPoint->boundDescriptorSetCount,
+                descriptorBindPoint->boundDescriptorSetCount * (1 + grDevice->descriptorUseSingleDescriptor),
                 &setIndices[i * COUNT_OF(descriptorBindPoint->descriptorOffsets)],
                 descriptorBindPoint->descriptorOffsets);
         }
@@ -275,7 +293,7 @@ static void grCmdBufferBindDescriptorBuffers(
             grCmdBuffer->commandBuffer,
             vkBindPoint, grPipeline->pipelineLayout,
             DESCRIPTOR_BUFFERS_BASE_DESCRIPTOR_SET_ID,
-            bindPoint->boundDescriptorSetCount,
+            bindPoint->boundDescriptorSetCount * (1 + grDevice->descriptorUseSingleDescriptor),
             setIndices, bindPoint->descriptorOffsets);
     }
 }

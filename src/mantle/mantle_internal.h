@@ -52,6 +52,7 @@
    if (name != _stack_##name) free(name)
 
 #define DESCRIPTORS_PER_SLOT (3)
+#define AMD_DESCRIPTOR_BUFFER_SSBO_OFFSET (32)
 
 GR_PHYSICAL_GPU_TYPE getGrPhysicalGpuType(
     VkPhysicalDeviceType type);

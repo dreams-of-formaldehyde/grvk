@@ -9,6 +9,7 @@ inline static void releaseSlot(
     }
 }
 
+#define SLOT_INDEX(startSlot, index, type) (((startSlot) + (index)) : (((startSlot) + (index)) * DESCRIPTORS_PER_SLOT + getDescriptorOffset(type)))
 // Descriptor Set Functions
 
 GR_RESULT GR_STDCALL grCreateDescriptorSet(
@@ -37,7 +38,7 @@ GR_RESULT GR_STDCALL grCreateDescriptorSet(
 
     VkResult vkRes = VK_SUCCESS;
     if (grDevice->descriptorBufferSupported) {
-        bufferSize = grDevice->maxMutableDescriptorSize * pCreateInfo->slots * DESCRIPTORS_PER_SLOT;
+        bufferSize = grDevice->maxMutableDescriptorSize * pCreateInfo->slots * (grDevice->descriptorUseSingleDescriptor ? 1 : DESCRIPTORS_PER_SLOT);
         uint32_t queueFamilyIndices[2];
         uint32_t queueFamilyIndexCount = 0;
         if (grDevice->grUniversalQueue) {
@@ -147,7 +148,7 @@ GR_RESULT GR_STDCALL grCreateDescriptorSet(
         };
         const VkDescriptorPoolSize poolSize = {
             .type = VK_DESCRIPTOR_TYPE_MUTABLE_EXT,
-            .descriptorCount = DESCRIPTORS_PER_SLOT * pCreateInfo->slots,
+            .descriptorCount = (grDevice->descriptorUseSingleDescriptor ? 1 : DESCRIPTORS_PER_SLOT) * pCreateInfo->slots,
         };
 
         const VkDescriptorPoolCreateInfo poolCreateInfo = {
@@ -254,7 +255,7 @@ GR_VOID GR_STDCALL grAttachSamplerDescriptors(
     if (grDevice->descriptorBufferSupported && grDevice->descriptorBufferAllowPreparedSampler) {
         for (unsigned i = 0; i < slotCount; i++) {
             const GrSampler* grSampler = (GrSampler*)pSamplers[i];
-            memcpy(grDescriptorSet->descriptorBufferPtr + ((startSlot + i) * DESCRIPTORS_PER_SLOT + getDescriptorOffset(VK_DESCRIPTOR_TYPE_SAMPLER)) * grDevice->maxMutableDescriptorSize,
+            memcpy(grDescriptorSet->descriptorBufferPtr + (grDevice->descriptorUseSingleDescriptor ? (startSlot + i) : ((startSlot + i) * DESCRIPTORS_PER_SLOT + getDescriptorOffset(VK_DESCRIPTOR_TYPE_SAMPLER))) * grDevice->maxMutableDescriptorSize,
                    &grSampler->descriptor,
                    grDevice->descriptorBufferProps.samplerDescriptorSize);
         }
@@ -275,7 +276,7 @@ GR_VOID GR_STDCALL grAttachSamplerDescriptors(
                 grDevice->device,
                 &descriptorInfo,
                 grDevice->descriptorBufferProps.samplerDescriptorSize,
-                grDescriptorSet->descriptorBufferPtr + ((startSlot + i) * DESCRIPTORS_PER_SLOT + getDescriptorOffset(VK_DESCRIPTOR_TYPE_SAMPLER)) * grDevice->maxMutableDescriptorSize);
+                grDescriptorSet->descriptorBufferPtr + (grDevice->descriptorUseSingleDescriptor ? (startSlot + i) : ((startSlot + i) * DESCRIPTORS_PER_SLOT + getDescriptorOffset(VK_DESCRIPTOR_TYPE_SAMPLER))) * grDevice->maxMutableDescriptorSize);
         }
     } else {
         STACK_ARRAY(VkWriteDescriptorSet, writeDescriptors, 128, slotCount);
@@ -303,7 +304,7 @@ GR_VOID GR_STDCALL grAttachSamplerDescriptors(
                 .pNext = NULL,
                 .dstSet = grDescriptorSet->descriptorSet,
                 .dstBinding = 0,
-                .dstArrayElement = (startSlot + i) * DESCRIPTORS_PER_SLOT + getDescriptorOffset(VK_DESCRIPTOR_TYPE_SAMPLER),
+                .dstArrayElement = ((startSlot + i) * DESCRIPTORS_PER_SLOT + getDescriptorOffset(VK_DESCRIPTOR_TYPE_SAMPLER)),
                 .descriptorCount = 1,
                 .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER,
                 .pImageInfo = &slot->image.imageInfo,
@@ -335,7 +336,42 @@ GR_VOID GR_STDCALL grAttachImageViewDescriptors(
         AcquireSRWLockExclusive(&grDescriptorSet->descriptorLock);
     }
 
-    if (grDevice->descriptorBufferSupported && grDevice->descriptorBufferAllowPreparedImageView) {
+    if (grDevice->descriptorBufferSupported && grDevice->descriptorUseSingleDescriptor && grDevice->descriptorBufferAllowPreparedImageView) {
+        for (unsigned i = 0; i < slotCount; i++) {
+            const GR_IMAGE_VIEW_ATTACH_INFO* info = &pImageViews[i];
+            const GrImageView* grImageView = (GrImageView*)info->view;
+            memcpy(grDescriptorSet->descriptorBufferPtr + (startSlot + i) * grDevice->maxMutableDescriptorSize,
+                   &grImageView->sampledDescriptor,
+                   grDevice->descriptorBufferProps.sampledImageDescriptorSize
+                );
+        }
+    } else if (grDevice->descriptorBufferSupported && grDevice->descriptorUseSingleDescriptor) {
+        for (unsigned i = 0; i < slotCount; i++) {
+            const GR_IMAGE_VIEW_ATTACH_INFO* info = &pImageViews[i];
+            const GrImageView* grImageView = (GrImageView*)info->view;
+
+            VkDescriptorImageInfo imageInfo = {
+                .sampler = VK_NULL_HANDLE,
+                .imageView = grImageView->imageView,
+                .imageLayout = getVkImageLayout(info->state),
+            };
+
+            VkDescriptorGetInfoEXT descriptorInfo = {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT,
+                .pNext = NULL,
+                .type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+                .data = {
+                    .pSampledImage = &imageInfo,
+                }
+            };
+            VKD.vkGetDescriptorEXT(
+                grDevice->device,
+                &descriptorInfo,
+                grDevice->descriptorBufferProps.sampledImageDescriptorSize,
+                grDescriptorSet->descriptorBufferPtr + (startSlot + i) * grDevice->maxMutableDescriptorSize);
+
+        }
+    } else if (grDevice->descriptorBufferSupported && grDevice->descriptorBufferAllowPreparedImageView) {
         for (unsigned i = 0; i < slotCount; i++) {
             const GR_IMAGE_VIEW_ATTACH_INFO* info = &pImageViews[i];
             const GrImageView* grImageView = (GrImageView*)info->view;
@@ -461,7 +497,68 @@ GR_VOID GR_STDCALL grAttachMemoryViewDescriptors(
         AcquireSRWLockExclusive(&grDescriptorSet->descriptorLock);
     }
 
-    if (grDevice->descriptorBufferSupported) {
+    if (grDevice->descriptorBufferSupported && grDevice->descriptorUseSingleDescriptor) {
+        for (unsigned i = 0; i < slotCount; i++) {
+            DescriptorSetSlot* slot = &grDescriptorSet->slots[startSlot + i];
+            const GR_MEMORY_VIEW_ATTACH_INFO* info = &pMemViews[i];
+            GrGpuMemory* grGpuMemory = (GrGpuMemory*)info->mem;
+            VkFormat vkFormat = getVkFormat(info->format);
+            VkBufferView vkBufferView = VK_NULL_HANDLE;
+
+            VkDescriptorAddressInfoEXT bufferInfo = {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT,
+                .pNext = NULL,
+                .address = grGpuMemory->address + info->offset,
+                .range = info->range,
+                .format = vkFormat
+            };
+
+            if (vkFormat != VK_FORMAT_UNDEFINED) {
+                VkDescriptorGetInfoEXT descriptorInfo = {
+                    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT,
+                    .pNext = NULL,
+                    .type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
+                    .data = {
+                        .pUniformTexelBuffer = &bufferInfo
+                    }
+                };
+
+                VKD.vkGetDescriptorEXT(
+                    grDevice->device,
+                    &descriptorInfo,
+                    grDevice->descriptorBufferProps.uniformTexelBufferDescriptorSize,
+                    grDescriptorSet->descriptorBufferPtr + (startSlot + i) * grDevice->maxMutableDescriptorSize);
+            }
+
+            VkDescriptorGetInfoEXT descriptorInfo = {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT,
+                .pNext = NULL,
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .data = {
+                    .pStorageBuffer = &bufferInfo
+                }
+            };
+
+            VKD.vkGetDescriptorEXT(
+                grDevice->device,
+                &descriptorInfo,
+                grDevice->descriptorBufferProps.storageBufferDescriptorSize,
+                grDescriptorSet->descriptorBufferPtr + (startSlot + i) * grDevice->maxMutableDescriptorSize + AMD_DESCRIPTOR_BUFFER_SSBO_OFFSET);
+
+            *slot = (DescriptorSetSlot) {
+                .type = SLOT_TYPE_BUFFER,
+                .buffer = {
+                    .bufferView = vkBufferView,
+                    .bufferInfo = {
+                        .buffer = grGpuMemory->buffer,
+                        .offset = info->offset,
+                        .range = info->range,
+                    },
+                    .stride = info->stride,
+                },
+            };
+        }
+    } else if (grDevice->descriptorBufferSupported) {
         for (unsigned i = 0; i < slotCount; i++) {
             DescriptorSetSlot* slot = &grDescriptorSet->slots[startSlot + i];
             const GR_MEMORY_VIEW_ATTACH_INFO* info = &pMemViews[i];
@@ -669,7 +766,7 @@ GR_VOID GR_STDCALL grClearDescriptorSetSlots(
     }
 
     if (grDevice->descriptorBufferSupported) {
-        memset(grDescriptorSet->descriptorBufferPtr + (startSlot * DESCRIPTORS_PER_SLOT * grDevice->maxMutableDescriptorSize), 0, grDevice->maxMutableDescriptorSize * slotCount * DESCRIPTORS_PER_SLOT);
+        memset(grDescriptorSet->descriptorBufferPtr + (startSlot * (grDevice->descriptorUseSingleDescriptor ? 1 : DESCRIPTORS_PER_SLOT) * grDevice->maxMutableDescriptorSize), 0, grDevice->maxMutableDescriptorSize * slotCount * (grDevice->descriptorUseSingleDescriptor ? 1 : DESCRIPTORS_PER_SLOT));
         memset(&grDescriptorSet->slots[startSlot], 0, sizeof(DescriptorSetSlot) * slotCount);
     } else {
         for (unsigned i = 0; i < slotCount; i++) {

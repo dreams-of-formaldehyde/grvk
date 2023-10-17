@@ -63,7 +63,8 @@ static void getDescriptorSlotsFromMapping(
     uint32_t* offsets,
     IlcBindingPatchEntry* patchEntries,
     unsigned pathDepth,
-    unsigned* path)
+    unsigned* path,
+    bool useSingleSlot)
 {
     for (unsigned i = 0; i < mapping->descriptorCount; i++) {
         const GR_DESCRIPTOR_SLOT_INFO* slotInfo = &mapping->pDescriptorInfo[i];
@@ -84,7 +85,8 @@ static void getDescriptorSlotsFromMapping(
             getDescriptorSlotsFromMapping(pDescriptorSlotCount, pDescriptorSlots,
                                           slotInfo->pNextLevelSet, bindingCount, bindings,
                                           offsets, patchEntries,
-                                          pathDepth + 1, path);
+                                          pathDepth + 1, path,
+                                          useSingleSlot);
             continue;
         }
 
@@ -98,8 +100,7 @@ static void getDescriptorSlotsFromMapping(
                    slotInfo->slotObjectType == GR_SLOT_SHADER_UAV)))) {
                 binding = &bindings[j];
 
-                uint32_t descriptorTypeOffset = getDescriptorOffset(bindings[j].descriptorType);
-                offsets[j] = i * DESCRIPTORS_PER_SLOT + descriptorTypeOffset;
+                offsets[j] = useSingleSlot ? i : (i * DESCRIPTORS_PER_SLOT + getDescriptorOffset(bindings[j].descriptorType));
 
                 break;
             }
@@ -212,7 +213,8 @@ static void setupDescriptorSetIndices(
     unsigned* descriptorSetIndices,
     unsigned descriptorSetIndexOffset,
     unsigned pathDepth,
-    unsigned* path)
+    unsigned* path,
+    bool useSingleSlot)
 {
     unsigned descriptorSetIndex = 0xFFFFFFFF;
     for (unsigned i = 0; i < descriptorSetCount; ++i) {
@@ -240,8 +242,10 @@ static void setupDescriptorSetIndices(
             setupDescriptorSetIndices(descriptorSetCount, descriptorSlots,
                                       slotInfo->pNextLevelSet, bindingCount, bindings,
                                       patchEntries, descriptorSetIndices,
+                                      // TODO: fix the offset!!!
                                       descriptorSetIndexOffset,
-                                      pathDepth + 1, path);
+                                      pathDepth + 1, path,
+                                      useSingleSlot);
             continue;
         }
         // Find matching binding
@@ -252,12 +256,14 @@ static void setupDescriptorSetIndices(
                  (bindings[j].type == ILC_BINDING_RESOURCE &&
                   (slotInfo->slotObjectType == GR_SLOT_SHADER_RESOURCE ||
                    slotInfo->slotObjectType == GR_SLOT_SHADER_UAV)))) {
-                unsigned computedDescriptorSetIndex = descriptorSetIndexOffset + descriptorSetIndex;
-                descriptorSetIndices[j] = computedDescriptorSetIndex;
+
+                descriptorSetIndices[j] = descriptorSetIndexOffset + descriptorSetIndex;
                 patchEntries[j] = (IlcBindingPatchEntry) {
                     .id = bindings[j].id,
                     .bindingIndex = 0,
-                    .descriptorSetIndex = computedDescriptorSetIndex,
+                    .descriptorSetIndex = useSingleSlot
+                    ? ((descriptorSetIndexOffset + descriptorSetIndex) * 2 + (bindings[j].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) - DESCRIPTOR_BUFFERS_BASE_DESCRIPTOR_SET_ID)
+                    : (descriptorSetIndexOffset + descriptorSetIndex),
                 };
                 break;
             }
@@ -291,7 +297,8 @@ static void getDescriptorSlotMappings(
                                       &shader->descriptorSetMapping[mappingIndex],
                                       grShader->bindingCount, grShader->bindings,
                                       specOffsets[i], patchEntries[i],
-                                      0, path);
+                                      0, path,
+                                      grDevice->descriptorUseSingleDescriptor);
     }
 
     mergeDescriptorSlots(descriptorSlotCount, descriptorSlots);
@@ -311,7 +318,8 @@ static void getDescriptorSlotMappings(
                                   patchEntries[i],
                                   specDescriptorIndices[i],
                                   descriptorSetIndexOffset,
-                                  0, path);
+                                  0, path,
+                                  grDevice->descriptorUseSingleDescriptor);
     }
 }
 
@@ -849,7 +857,7 @@ GR_RESULT GR_STDCALL grCreateGraphicsPipeline(
     for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
         descriptorSetCount += descriptorSetCounts[i];
     }
-    pipelineLayout = getVkPipelineLayout(grDevice, descriptorSetCount, VK_PIPELINE_BIND_POINT_GRAPHICS);
+    pipelineLayout = getVkPipelineLayout(grDevice, descriptorSetCount * (1 + grDevice->descriptorUseSingleDescriptor), VK_PIPELINE_BIND_POINT_GRAPHICS);
     if (pipelineLayout == VK_NULL_HANDLE) {
         res = GR_ERROR_OUT_OF_MEMORY;
         goto bail;
@@ -1028,7 +1036,7 @@ GR_RESULT GR_STDCALL grCreateComputePipeline(
     for (unsigned i = 0; i < GR_MAX_DESCRIPTOR_SETS; i++) {
         descriptorSetCount += descriptorSetCounts[i];
     }
-    pipelineLayout = getVkPipelineLayout(grDevice, descriptorSetCount, VK_PIPELINE_BIND_POINT_COMPUTE);
+    pipelineLayout = getVkPipelineLayout(grDevice, descriptorSetCount * (1 + grDevice->descriptorUseSingleDescriptor), VK_PIPELINE_BIND_POINT_COMPUTE);
     if (pipelineLayout == VK_NULL_HANDLE) {
         res = GR_ERROR_OUT_OF_MEMORY;
         goto bail;
@@ -1113,6 +1121,7 @@ GR_RESULT GR_STDCALL grStorePipeline(
 
     if (!pDataSize) return GR_ERROR_INVALID_POINTER;
     GrPipeline* grPipeline = (GrPipeline*)pipeline;
+    const GrDevice* grDevice = GET_OBJ_DEVICE(grPipeline);
 
     GR_SIZE sz = sizeof(GrStoredPipelineBlob);
     for (unsigned i = 0; i < MAX_STAGE_COUNT; i++) {
@@ -1150,6 +1159,7 @@ GR_RESULT GR_STDCALL grStorePipeline(
     if (pData != NULL) {
         GrStoredPipelineBlob* blob = (GrStoredPipelineBlob*)pData;
         blob->version = 0;
+        blob->driverId = grDevice->vendorId;
 
         GrBaseBlobChunk* chunk = CAST_CHUNK_BASE(blob);
 
@@ -1356,6 +1366,9 @@ GR_RESULT GR_STDCALL grLoadPipeline(
     }
 
     LOGT("size is correct\n");
+    if (blob->driverId != grDevice->vendorId) {
+        return GR_ERROR_INCOMPATIBLE_DEVICE;
+    }
     /* shader code */
     VkShaderModule shaderModules[MAX_STAGE_COUNT] = { VK_NULL_HANDLE };
     void* shaderCode[MAX_STAGE_COUNT] = { NULL };
@@ -1532,7 +1545,7 @@ GR_RESULT GR_STDCALL grLoadPipeline(
         descriptorSetCount += descriptorSetCounts[i];
     }
 
-    pipelineLayout = getVkPipelineLayout(grDevice, descriptorSetCount, VK_PIPELINE_BIND_POINT_COMPUTE);
+    pipelineLayout = getVkPipelineLayout(grDevice, descriptorSetCount * (1 + grDevice->descriptorUseSingleDescriptor), VK_PIPELINE_BIND_POINT_COMPUTE);
     if (pipelineLayout == VK_NULL_HANDLE) {
         res = GR_ERROR_OUT_OF_MEMORY;
         goto bail;

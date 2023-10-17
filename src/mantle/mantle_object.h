@@ -247,6 +247,7 @@ typedef struct _GrDevice {
     VkPhysicalDevice physicalDevice;
     VkPhysicalDeviceMemoryProperties memoryProperties;
     VkPhysicalDeviceDescriptorBufferPropertiesEXT descriptorBufferProps;
+    uint32_t vendorId;
     unsigned memoryHeapCount;
     uint32_t memoryHeapMap[GR_MAX_MEMORY_HEAPS];
     union {
@@ -276,6 +277,8 @@ typedef struct _GrDevice {
     bool descriptorBufferSupported;
     bool descriptorBufferAllowPreparedImageView;
     bool descriptorBufferAllowPreparedSampler;
+    /* use single 64-byte descriptor per slot (AMD only) */
+    bool descriptorUseSingleDescriptor;
     uint32_t maxMutableUniformDescriptorSize;
     uint32_t maxMutableStorageDescriptorSize;
     uint32_t maxMutableDescriptorSize;
